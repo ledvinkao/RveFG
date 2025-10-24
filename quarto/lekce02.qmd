@@ -1,0 +1,175 @@
+---
+title: "R ve fyzické geografii: Základy načítání a ukládání tabulkových dat"
+author: "Ondřej Ledvinka"
+format: html
+embed-resources: true
+toc: true
+editor: visual
+date: 2025-10-21
+date-modified: '`r Sys.Date()`'
+theme: darkly
+lang: cs
+engine: knitr
+---
+
+## Prerekvizity
+
+V následujícím se předpokládá, že již máme založený R projekt ze začátku kurzu. To znamená, že máme možnost využívat relativní cesty k souborům a jiné výhody práce s R projektem. Dále se předpokládá, že máme kvalitní připojení k internetu, jelikož se může stát, že budeme instalovat chybějící balíčky či stahovat potřebná (geo)data.
+
+Pokud možno, budeme také pracovat s nejnovějšími verzemi `R` (v současnosti `r R.Version()$version.string` – `r R.Version()$nickname` z `r paste(R.Version()$year, R.Version()$month, R.Version()$day, sep = "-")`) a RStudio (v současnosti RStudio 2025.09.1+401 "Cucumberleaf Sunflower" z 2025-09-23).
+
+## Načtení potřebných balíčků a studijních metadat
+
+Existuje hned několik typů souborů, které lze prostřednictvím `R` načítat. K tomu také existuje několik základních funkcí, ale můžeme využívat i funkcí z přídavných balíčků. V současnosti získávají oblibu také soubory, které připomínají databáze. Jsou ale předurčené k práci na lokálním souborovém systému a tedy důležitou roli zde hrají též různé typy kompresí, aby se dnešní velká data na disky vešla. Jako základní budeme brát soubor s metadaty profilů jakosti povrchových vod (matrice voda)[^1], která obsahují i souřadnice, které nám později dopomohou pochopit vznik a práci s vektorovými geodaty. Protože tento soubor reprezentuje jeden z nejmodernějších typů uložení dat, který se nazývá Apache Parquet, budeme k jeho načtení potřebovat speciální R balíček `arrow`.
+
+[^1]: Jeho zdrojem je webová stránka ČHMÚ s otevřenými daty (viz <https://opendata.chmi.cz/>). Zde jsou k dispozici tzv. JSON soubory, které byly lektorem převedeny do Apache Parquet souboru.
+
+Protože cílem je založit naši práci na přístupu *tidyverse*, budeme standardně načítat celou jeho základní sadu, která se ve skutečnosti skládá z devíti balíčků. Protože potřebujeme načíst více balíčků najednou, a ty také nemusejí být nainstalovány, budeme často k takovému načítání používat již známý konstrukt `xfun::pkg_attach2()`.
+
+```{r}
+#| label: nacteni-balicku-a-metadat
+# načteme potřebné balíčky, o jejichž potřebě víme, najednou
+xfun::pkg_attach2("tidyverse",
+                  "arrow")
+
+# soubor s metadaty není velký, takže si dovolíme jej načíst rovnou i do paměti (tj. globálního prostředí)
+# předpokládá se, že metadata máme uložena ve složce metadata našeho projektu
+meta1 <- open_dataset("metadata/wq_water_metadata1") |> 
+  collect() # tímto sbíráme data do paměti (jinak dostaneme jen odkaz na soubor)
+
+# můžeme si prohlédnout začátek a konec tabulky, která je v souboru obsažena
+head(meta1)
+
+tail(meta1)
+
+# takto si zobrazíme více dat ze začátku tabulky
+meta1 |> 
+  print(n = 20)
+
+meta1 |> 
+  class()
+
+# výsledkem je tzv. tibble objekt, který představuje vylepšený datový rámec (data frame)
+```
+
+Objekt typu *tibble* je jeden z nejsázadnějších objektů při práci v `R` v pojetí *tidyverse*. Jde vlastně také o tabulku (datový rámec, data frame), se kterou ale lze pracovat mnohem efektivněji. Jednak se vyznačuje lepším tiskem do konzole (kde je i napovězeno, že lze použít funkci `print()` pro tisk více řádků), jednak může obsahovat sloupce se seznamy (třída list), což umožňuje i uchovávání informace o geometrii. Připomeňme též, že tabulka je základem stavění modelů v `R`, kdy do modelů vstupuje jako argument `data`.
+
+## Uložení právě načtených metadat do běžnějších typů souborů a jejich zpětné načtení
+
+Pokud jde o data samotná, jsou bohužel stále velmi rozšířené soubory produkované v MS Excel. Proto musí v `R` existovat nástroje pro jejich uložení (aby je mohl otevřít ten, kdo pracuje výhradně v MS Excel) a pro jejich načtení (abychom mohli tyto soubory využívat naopak my). Nejdůležitější balíčky pro práci se soubory XLS(X) jsou pro nás balíčky `readxl`, `writexl` a `openxlsx`. Nemusíme je načítat celé, namísto toho můžeme využít konstrukt se dvěma dvojtečkami.
+
+Uložme naše metadata do XLSX souboru a pak je opět načtěme.
+
+```{r}
+#| label: excel-soubory
+# předpokládáme, že pro ukládání výstupů z R máme v projektu založenou složku outputs a můžeme se odkazovat relativně, pokud jde o cestu k souboru
+
+# k ukládání XLSX souborů zde máme např. funkci writexl::write_xlsx()
+writexl::write_xlsx(meta1,
+                    "outputs/metadata1.xlsx")
+
+# naopak pro načítání těchto souborů můžeme využít funkci readxl::read_xlsx()
+# zde existuje i obecnější funkce readxl::read_excel(), která umožnuje nepřemýšlet nad tím, zda načítáme XLSX nebo starší XLS soubory
+meta1b <- readxl::read_xlsx("outputs/metadata1.xlsx")
+
+# přesvědčíme se, že jsme skutečně soubor načetli
+meta1b
+```
+
+Velmi rozšířené[^2] jsou stále CSV soubory, což jsou textové soubory s tabulkami, kde je standardně oddělovačem sloupců čárka. Soubory mohou, ale také nemusí, obsahovat názvy sloupců. *Tidyverse* přichází s vlastními funkcemi pro načítání takových souborů, kde asi nejhlavnější (tj. má nejuniverzálnějšími argumenty) je funkce `read_delim()`, ale existují i její varianty, jako je funkce `read_csv()`. Protože v části světa, kde se jako desetinný znak používá čárka, vžilo používání středníků coby oddělovačů sloupců, existují i varianty funkce, jako je `read_csv2()`[^3].
+
+[^2]: Slouží např. k nabízení dat ke stažení na internetu. Viz např. <https://isvs.chmi.cz/>.
+
+[^3]: Existují i tzv. base-R protějšky těchto funkcí, v jejichž názvech se však místo teček vyskytují podtřžítka. Důvod, proč vývojáři *tidyverse* používají své vlastní funkce je fakt, že původní funkce nemusely být vektorizovány, což vadí při aplikacích funkcionálního programování. Podobně existuje i funkce `iflese()` a `in_else()`, které připomínají excelovskou funkci KDYŽ. Pro podrobnosti k funkcionálnímu programování viz též význam balíčku `purrr`.
+
+Uložme naše metadata do CSV souboru a opět je z tohoto souboru načtěme. Zároveň sledujme, co se děje v systému složek a souborů v našem projektu.
+
+```{r}
+#| label: csv-soubory
+# na rozdíl od načítací funkce read_csv() tu pro ukládání máme funkci write_csv()
+write_csv(meta1,
+          "outputs/metadata1.csv")
+
+# a opět načtěme
+meta1c <- read_csv("outputs/metadata1.csv")
+
+# a prohlédněme
+meta1c
+```
+
+Pokud jsme šťastlivci, budeme mít v objektech s opětovně načtenými daty i správně definované typy sloupců. `R` se dosti dobře snaží tyto typy odhadnout správně, ale obecně zde pro tyto definice slouží při načítání argument `col_types`. Neudržování infomace o typu sloupce v tabulce je jednou z nevýhod CSV a i jiných textových souborů. Proto je doporučováno přecházet na modernější typy souborů.
+
+Tip: Pro nastudování významu různých argumentů funkce `read_delim()` může velmi dobře posloužit nabidka *Import Dataset*. Interaktivně se tam (podobně jako v MS Excel) generuje znění funkce pro načítání, který pak můžeme kopírovat, měnit, doplňovat atd.
+
+## Soubory RDS
+
+Oblíbeným typem souboru v R komunitě, je soubor typu RDS, který představuje jeden "serializovaný" objekt z globálního prostředí. V základním `R` pro práci s takovými soubory existují funkce `readRDS()` a `saveRDS()`. *Tidyverse* ale přichází s protějšky `read_rds()` a `write_rds()`.
+
+Zkusme tedy využít posledně jmenované funkce a ukažme, jak je výhodné pracovat s RDS soubory.
+
+```{r}
+#| label: rds-soubory
+# uložme
+write_rds(meta1,
+          "outputs/metadata1.rds") # obecně se nedoporučuje míchat velká a malá písmena v příponě souboru, soubory se pak špatně hledají
+
+# načteme
+meta1d <- read_rds("outputs/metadata1.rds")
+
+# prohlédněme
+meta1d
+```
+
+Tento typ souborů uchovává i informaci o typu sloupce v tabulce. Povšimněme si také, že funkce `write_rds()` má další argumenty, jako je možnost komprese. Někdy se tato vlastnost hodí, protože soubory pak zabírají méně místa na disku, jindy ale při načítání komprimovaných souborů musíme čekat delší dobu.
+
+Pozor! Naučte se rozlišovat mezi soubory .RDS, .R, .Rhistory a .RData. Každý slouží k něčemu jinému. Pro ukládání R skriptů slouží .R soubory, pro ukládání historie všeho, co se kdy objevilo v konzoli, slouží .Rhistory soubory a pro ukládání všeho, co doposud máme v globálním prostředí, slouží .RData soubory.
+
+Obecně se v geografii nedoporučuje .RData soubory používat vůbec, protože některé objekty nepředstavují data načtená do paměti a namísto toho jen odkazy na soubory. Tohoto efektu se využívá hlavně u velkých dat, jako jsou rastrová geodata.
+
+## Dočasné soubory
+
+Všimněme si, že některé funkce, jako je třeba `writexl::write_xlsx()` umožňují nezadávat cestu k ukládanému souboru vůbec. Když nespecifikujeme tuto cestu, vytvoří se prostřednictvím funkce `tempfile()` jakýsi dočasný soubor. Funkce `tempfile()` dokonce obsahuje argument `fileext`, kterým upřesňujeme příponu dočasného souboru.
+
+Této vlastnosti `R` využíváme tehdy, kdy si potřebujeme narychlo uložit nějaké mezivýsledky, nebo třeba nelze načíst data z nějakého typu souboru rovnou do paměti. Velmi hojně se tohoto efektu využívá při práci s velkými rastrovými soubory. I tyto dočasné soubory pak mohou být využity dále, pro načtení dat (nebo jejich zájmové části).
+
+Dočasné soubory mizí ze systému po ukončení sezení (session). I pouhý restart sezení může mít za následek jejich zmizení. Některé balíčky umožňují si nastavit adresář pro ukládání dočasných souborů. Typická je proto funkce `terraOptions()` balíčku `terra`.
+
+## Pivoting tabulek
+
+Velmi užitečnou funkcionalitou přícházející s přístupem *tidyverse* je tzv. pivoting tabulek. Různé funkce totiž potřebují různý formát tabulek, některé dlouhý formát, jiné široký formát. Základní funkce měnit takto formát tabulky jsou zde funkce `pivot_wider()` a `pivot_longer()`. Jak z jejich názvů vyplývá, `pivot_wider()` mění formát tabulky na široký a `pivot_longer()` mění formát na dlouhý. Ukažme tento význam na příkladech.
+
+```{r}
+#| label: pivoting-tabulek
+# vezmeme si opět objekt s metadaty
+# řekněme, že budeme chtít z identifikátorů profilů získat nové sloupce
+meta1_wider <- meta1 |> 
+  pivot_wider(names_from = obj_id, # zde nemusíme používat uvozovky, protože sloupce, na které se odkazujeme, již existují
+              values_from = c(geogr1, # nemusíme se omezovat jen na jednu proměnnou
+                              geogr2))
+
+meta1_wider
+
+# a pojďme zpět na na dlouhý formát
+meta1_longer <- meta1_wider |> 
+  pivot_longer(cols = starts_with("geogr"), # specifikujeme sloupce k natažení
+               names_to = c("coords", # zde vytváříme nové sloupce, proto uvozovky
+                            "obj_id"),
+               names_sep = "_", # nekdy se hodí uvést separátor z názvu sloupců, když jich tvoříme více
+               values_drop_na = T) # jinak by se vytvořily řádky s chybějícími hodnotami
+
+meta1_longer
+
+# ještě pořád ale něco chybí, abychom se dostali do původního stavu
+meta1_longer <- meta1_longer |> 
+  pivot_wider(names_from = coords,
+              values_from = value) |> 
+  relocate(obj_id, .before = chmi_id) # nastavujeme původní polohu sloupce
+
+meta1_longer
+```
+
+K těmo funkcím existuje také tzv. viněta, prostudujte `vignette("pivot")`, abyste získali lepší představu o pivotingu.
+
+Pivoting tabulek se velmi hodí před kreslením grafů ve smyslu *ggplot2*.
+
+Na závěr poznamenejme, že funkce `starts_with()` je tzv. pomocník pro výběr sloupců podle začátků jejich názvů. Existují i její příbuzné `ends_with()`, `contains()` a `matches()`, z nichž `matches()` je v jistém smyslu neuniverzálnější. Ale o tom později.
