@@ -1,0 +1,266 @@
+---
+title: "R ve fyzické geografii: Základy kreslení grafů ve smyslu ggplot2; logické vektory"
+author: "Ondřej Ledvinka"
+format: html
+embed-resources: true
+toc: true
+editor: visual
+date: 2025-11-04
+date-modified: '`r Sys.Date()`'
+bibliography: references_RveFG.bib
+csl: geografie-sbornik-cgs.csl
+theme: darkly
+lang: cs
+engine: knitr
+---
+
+## Prerekvizity
+
+V následujícím se předpokládá, že již máme založený R projekt ze začátku kurzu. To znamená, že máme možnost využívat relativní cesty k souborům a jiné výhody práce s R projektem. Dále se předpokládá, že máme kvalitní připojení k internetu, jelikož se může stát, že budeme instalovat chybějící balíčky.
+
+Pokud možno, budeme také pracovat s nejnovějšími verzemi `R` (v současnosti `r R.Version()$version.string` – `r R.Version()$nickname` z `r paste(R.Version()$year, R.Version()$month, R.Version()$day, sep = "-")`) a RStudio (v současnosti RStudio 2025.09.2+418 "Cucumberleaf Sunflower" z 2025-10-20).
+
+## Základy kreslení grafů ve smyslu ggplot2
+
+Analýzu dat si bez kreslení grafů nebo jednoduchých map nelze ani představit. Díky tomu můžeme odhalit celou řadu vlastností našich dat včetně jejich statistického rozdělení nebo vztahů mezi nimi. Kreslení pomáhá i při odhalování chyb v datech (i když `R` s *tidyverse* svými hláškami už i tak dost napovídá) nebo třeba chybějících hodnot. Asi nepropracovanější přístup kreslení grafů v `R` je zakomponovaný v balíčku `ggplot2`[^1], který je nedílnou součástí *tidyverse*. Kromě toho se svět tohoto balíčku v průběhu času rozšířil o velké množství dalších funkcí skrývajících se v dalších specializovaných balíčcích. Takže v současnosti existují i funkce pro kreslení map apod.
+
+[^1]: Písmena "gg" na začátku názvu balíčku znamenají *grammar of graphics*, tedy ucelenou gramatiku, na základě které lze poměrně rychle stavět dále.
+
+Nejprve budeme potřebovat nějakou tabulku s daty, která budeme moci kreslit. Založme tato kreslení např. na tabulce `trees`, ježto je, jak již víme, součástí základu `R` a není tedy nutné instalovat nic dalšího[^2]. Tabulku si ale neprve trochu upravíme. Hodnoty v ní uvedené nejsou v jednotkách SI, jak praví nápověda. Stejně tak tabulka nemá třídu *tibble* a její sloupce taktéž z heldiska svých názvů nekorespondují s uklizenými daty [viz např. @wickham2023].
+
+[^2]: Tedy pokud již máme pro následující příklad nainstalovaný balíček `janitor`, jehož funkci `clean_names()` hodláme využít v konbstruktu s dvěma dvojtečkami `::`.
+
+```{r}
+#| label: uklid-tabulky
+# na začátku rovnou načteme celý tidyverse
+# protože využijeme funkci janitor::clean_names(), je třeba mít nainstalovaný balíček janitor
+# podobně využijeme funkce units::set_units() a units::drop_units()
+# balíček units jsme ale již aplikovali, takže bychom jej nainstalovaný mít měli
+xfun::pkg_attach2("tidyverse")
+
+# nový objekt nazveme třeba df (jako data frame)
+# funkce mutate() je součástí tidyverse
+# tato funkce přidává nové nebo mění existující sloupce
+df <- trees |> 
+  as_tibble() |> 
+  janitor::clean_names() |> # čistíme názvy sloupců
+  mutate(girth = units::set_units(girth,
+                                  "in") |> # když hrozí konflikt s funkcí nebo operátorem, je vhodné jednotky uvádět v uvozovkách (ale nemusí to tak být)
+           units::set_units("cm"), # přiřazené jendotky převádíme
+         height = units::set_units(height, "ft") |> 
+           units::set_units("m"),
+         volume = units::set_units(volume,
+                                   "ft3") |> 
+           units::set_units("m3"))
+
+# prohlédneme
+df
+
+# při kreslení grafů naopak jednotky mohou vadit, tak se jich zbavíme
+# ukažme si, jak je pomocí funkce mutate() a pomocníků across() a everything() opět jednotky odstranit (myšleno výhodně najednou)
+df2 <- df |> 
+  mutate(across(everything(), # unvnitř across() nejprve vybíráme sloupce
+                units::drop_units)) # pak aplikujeme existující funkci (tady lze bez závorek, protože nejde o tzv. anonymní funkci)
+
+df2
+
+# ekvivalentem everything() je výběr všech sloupců např. takto
+df3 <- df |> 
+  mutate(across(girth:volume,
+                units::drop_units))
+
+df3
+```
+
+V tabulce máme tři proměnné a všechny jsou numerické (kvantitativní). Demonstrujme na nich sílu grafů konstruovaných ve smyslu `ggplot2`.
+
+```{r}
+#| label: uplny-zaklad
+# dejme tomu, že se budeme chtít podívat na vztah mezi obvodem (girth) a výškou (height)
+
+# zákaldem grafu je funkce ggplot()
+ggplot()
+
+# ta kreslí jen jakési plátno a očekává, že vyplníme dva důležité argumenty - data a mapping
+
+# do argumentu data dodáváme vstupní tabulku
+# argumentem mapping specifikujeme, co se bude vynášet na osy (používáme pomocníka aes(), z angl. 'aestetics')
+ggplot(data = df2,
+       mapping = (aes(x = girth,
+                      y = height)))
+
+# tím se zatím jen určí rozsahy os
+# pořád ještě ale potřebujeme určit, jak se budou data kreslit
+# k tomu slouží celá řada funkcí 'geom_', z nich v tomto případě je asi nejčastější geom_point() pro tzv. scatterplot (v Excelu známý pod pojmem XY bodový graf)
+ggplot(df2, # protože argumenty data a mapping jsou jasné, lze jejich názvy vynechávat z důvodu ušetření psaní textu
+       aes(x = girth,
+           y = height)) + # pozor! vrstvíme operátorem +
+  geom_point()
+```
+
+Vidíme, že můžeme hovořit o slabší linární závislosti. Existují i funkce, kterými můžeme data vyrovnat. Nejznámější je zřejmě regresní přímka, jejíž parametry získáváme lineárním modelem, v `R` tedy funkcí `lm()`. Zkusme si tuto přímku vykreslit.
+
+```{r}
+#| label: regresni-primka
+df2 |> # i takto lze tabulku dodat funkci ggplot() coby argument data
+  ggplot(aes(x = girth,
+             y = height)) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+
+# pásy kolem souvisejí se standardní chybou (standard error, se)
+# lze je odstranit takto
+df2 |> 
+  ggplot(aes(x = girth,
+             y = height)) + 
+  geom_point() + 
+  geom_smooth(method = "lm",
+              se = F)
+```
+
+Bylo by ale ještě vhodné upravit si nadpis a popisky os, příp. dodat informaci o zdroji dat.
+
+```{r}
+#| label: nadpis-popisky-zdroj
+# k tomuto obecně slouží funkce labs()
+df2 |> 
+  ggplot(aes(x = girth,
+             y = height)) + 
+  geom_point() + 
+  geom_smooth(method = "lm",
+              se = F) + 
+  labs(title = "Závislost výšky na obvodu kmene u střemchy pozdní",
+       x = "obvod kmene [cm]",
+       y = "výška [m]",
+       caption = "zdroj: R balíček datasets")
+```
+
+Funkce začínající názvem "`theme_`" přenastavují obecný vzhled grafu.
+
+```{r}
+#| label: konecny-vzhled
+df2 |> 
+  ggplot(aes(x = girth,
+             y = height)) + 
+  geom_point() + 
+  geom_smooth(method = "lm",
+              se = F) + 
+  labs(title = "Závislost výšky na obvodu kmene u střemchy pozdní",
+       x = "obvod kmene [cm]",
+       y = "výška [m]",
+       caption = "zdroj: R balíček datasets") + 
+  theme_bw()
+
+# avšak pozadí lze úplně vynechat; k čemu by se to mohlo hodit?
+df2 |> 
+  ggplot(aes(x = girth,
+             y = height)) + 
+  geom_point() + 
+  geom_smooth(method = "lm",
+              se = F) + 
+  labs(title = "Závislost výšky na obvodu kmene u střemchy pozdní",
+       x = "obvod kmene [cm]",
+       y = "výška [m]",
+       caption = "zdroj: R balíček datasets") + 
+  theme_void()
+```
+
+Existují argumenty, které můžeme, ale také nemusíme vkládat do pomocné funkce `aes()`. Když je nevložíme, většinou to je z důvodu, že vše chceme vykeslit stejně. Když jsou naopak tyto argumenty součástí funkce `aes()`, mění se jejich chování v závislosti na datech (nějaké proměnné), tj. respektují určité měřítko, které lze pak také nastavit.
+
+Mezi tyto argumenty např. patří `color` (často zkracujeme na `col`), `fill`, `size`, (`linewidth`, `linetype`) apod.
+
+```{r}
+#| label: demonstrace-meritek
+# zde již tedy využijeme i třetí proměnnou - volume
+df2 |> 
+  ggplot(aes(x = girth,
+             y = height)) + 
+  geom_point(aes(size = volume,  # kromě globálního nastavení v ggplot() lze aes() ladit lokálně v každé geometrické funkci (tím se globální nastavení přepisuje)
+                 col = volume)) + # stejnou proměnnou lze použít vícekrát
+  geom_smooth(method = "lm",
+              se = F,
+              col = "red") + 
+  labs(title = "Závislost výšky na obvodu kmene u střemchy pozdní",
+       x = "obvod kmene [cm]",
+       y = "výška [m]",
+       caption = "zdroj: R balíček datasets")
+```
+
+Zkusme ještě histogramy nebo hustotu.
+
+```{r}
+#| label: histogram-hustota
+# u histogramu je zásadním argument binwidth (nebo bins), kterým určujeme šířku intervalu (nebo počet intervalů) - zkuste přenastavovat
+df2 |> 
+  ggplot(aes(x = girth)) + # zde stačí zadávat jen jednu souřadnici
+  geom_histogram(binwidth = 5)
+
+df2 |> 
+  ggplot(aes(x = height)) + 
+  geom_histogram(binwidth = 1)
+
+df2 |> 
+  ggplot(aes(x = volume)) + 
+  geom_histogram(binwidth = 0.3)
+
+df2 |> 
+  ggplot(aes(x = girth)) + 
+  geom_density(col = "darkolivegreen",
+               linewidth = 1.5,
+               fill = "green", # může pomoci i výplň
+               alpha = 0.3) # takto nastavujeme průhlednost
+
+# zkuste i pro ostatní proměnné
+```
+
+Kategorické proměnné v tabulce nemáme, mají však zajímavou roli při kreslení grafů, jako jsou boxploty (krabicové grafy), sloupcové grafy nebo dokonce tzv. facety [viz kap. 1 v knize @wickham2023].
+
+Za využití pivotingu tabulek si můžeme naší tabulku převést na dlouhý formát a demonstrovat např. konstrukci boxplotu. Protože každá proměnná má trochu jiné měřítko, před kreslením budeme standardizovat.
+
+```{r}
+#| label: boxploty
+# funkce group_by() má značný význam, pokud něco chceme počítat po skupinách, zde proměnných
+dfl <- df2 |> 
+  pivot_longer(cols = everything()) |> 
+  group_by(name) |> 
+  mutate(value = (value - mean(value)) / sd(value)) # funkce mutate() je citlivá na grupování, a tedy vhodná na standardizaci odečtením průměru podělením tohoto výsledku směrodatnou odchylkou (vše po skupinách)
+
+# podíváme se na začátek výsledku
+# povšimněte si i uvedení počtu skupin na začátku tisku tabulky v konzoli
+dfl
+
+dfl |> 
+  class()
+
+# a už můžeme kreslit boxplot
+dfl |> 
+  ggplot(aes(x = name,
+             y = value)) + 
+  geom_boxplot()
+```
+
+## Ukládání grafů do souboru
+
+Pracně vyhotovené grafy je vhodné uložit. Existuje sice možnost si uložit grafy po jednom tlačítkem Export v kartě Plots, ale je lepší se hned naučit ukládat soubory programaticky (z příkazové řádky). Má to hned několik výhod – můžeme uložit rychle několik grafů najednou do svých vlastních souborů. Lze si tím snadno hlídat rozměry (např. stránky A5) a tzv. drivery pro různé typy souborů. Avšak našlo by se jistě i více výhod např. po prozkoumání síly tzv. funkcionálního programování a "lepení" textových řetězců.
+
+Záadní pro ukládání grafů vytvořených funkcemi balíčku `ggplot2` je funkce `ggsave()`. Tato funkce standardně ukládá poslední graf vykreslený v kartě Plots, ale, co se bude kreslit, je možné si pohlídat uložením grafu do objektu a specifikováním argumentu `plot`.
+
+Přiřaďme si nejprve náš krabicový graf do objektu a pak z tohoto objektu uložme graf do PDF souboru specofikováním přípony .pdf v názvu souboru.
+
+```{r}
+#| label: ukladani-do-souboru
+# nejprve přiřazení k objektu
+p1 <- dfl |> 
+  ggplot(aes(x = name,
+             y = value)) + 
+  geom_boxplot()
+
+# teď uložení z tohoto objektu
+# nastavme např. velikost A6
+# rozlišení necháme stejné
+ggsave("obrazky/boxplot.pdf",
+       width = 148,
+       height = 105,
+       units = "mm", # i tohle hlídání si jednotek může být velkou výhodou funkce ggsave() oproti ukládání tlačítkem Export
+       plot = p1)
+```
