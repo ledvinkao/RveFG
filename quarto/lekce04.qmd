@@ -1,0 +1,320 @@
+---
+title: "R ve fyzické geografii: Logické vektory, čísla"
+author: "Ondřej Ledvinka"
+format: html
+embed-resources: true
+toc: true
+editor: visual
+date: 2025-11-11
+date-modified: '`r Sys.Date()`'
+bibliography: references_RveFG.bib
+csl: geografie-sbornik-cgs.csl
+theme: darkly
+lang: cs
+engine: knitr
+---
+
+## Prerekvizity
+
+V následujícím se předpokládá, že již máme založený R projekt ze začátku kurzu. To znamená, že máme možnost využívat relativní cesty k souborům a jiné výhody práce s R projektem. Dále se předpokládá, že máme kvalitní připojení k internetu, jelikož se může stát, že budeme instalovat chybějící balíčky.
+
+Pokud možno, budeme také pracovat s nejnovějšími verzemi `R` (v současnosti `r R.Version()$version.string` – `r R.Version()$nickname` z `r paste(R.Version()$year, R.Version()$month, R.Version()$day, sep = "-")`) a RStudio (v současnosti RStudio 2025.09.2+418 "Cucumberleaf Sunflower" z 2025-10-20).
+
+## Logické vektory
+
+Logické vektory jsou živnou půdou pro pro jednu z nejužívanějších funkcí světa *tidyverse*. Ve skutečnosti to jsou velmi jednoduché vektory, které mohou nabývat jen tří různých hodnot – `TRUE`, `FALSE` a `NA`, přičemž `NA` je zde rezervováno pro chybějící nebo neznámé hodnoty (missing values; zkratka složena z angl. *not available*). Logické vektory (třeba i jen o jednom prvku) často vznikají porovnáním numerických hodnot a jsou podkladem tzv. Booleovy algebry. Podrobně se logickým vektorům věnuje kap. 12 knihy @wickham2023, kde v sekci 12.3 najdeme užitečné schéma se všemi základními vztahy na které je možné se ptát různými operátory. Některé z těchto operátorů jsme si již ukazovali a máme je uvedeny např. v seznamu klávesových zkratek.
+
+Důležitá vlastnost `R` je tzv. recyklace prvků vektorů, která umožňuje porovnávat více prvků nějakého vektoru s nějakou hodnotou, kterou nepotřebujeme vypisovat tolikrát, kolik je prvků vektoru. Výsledkem porovnání je pak vektor stejné délky, jakou měl vstupní vektor.
+
+Pokračujme ve cvičení s tabulkou se stromy.
+
+```{r}
+#| label: logicke-vektory-vznikajici-porovnavanim
+# nejprve tabulku opět ukliďme
+xfun::pkg_attach2("tidyverse")
+
+df <- trees |> 
+  as_tibble() |> 
+  janitor::clean_names() |> 
+  mutate(girth = units::set_units(girth, "in") |> 
+           units::set_units("cm"),
+         height = units::set_units(height, "ft") |> 
+           units::set_units("m"),
+         volume = units::set_units(volume, "ft3") |> 
+           units::set_units("m3")) |> 
+  mutate(across(everything(), units::drop_units))
+
+# každý sloupec tabulky je vlastně vektor, takže existují i funkce, jak ze sloupců takový vektor získat
+# klasicky lze vektory získat operátorem $ nebo hranatými závorkami
+objem <- df$volume
+
+objem
+
+objem <- as.data.frame(df)[, 3] # protože tibble se chová jinak než data frame
+
+objem
+
+# ale existuje i tidyverse funkce pull()
+objem <- df |> 
+  pull(volume)
+
+# teď se můžeme ptát na pravdy a nepravdy porovnáním s nějakou numerickou hodnotou
+# medián by měl rozdělovat pravdy a nepravdy do dvou stejně velkých skupin
+objem >= median(objem)
+
+objem <= median(objem)
+
+length(objem)
+
+length(objem >= median(objem))
+```
+
+Operátory pro porovnání jsou: `<` (menší), `<=` (menší nebo rovno), `>` (větší), `>=` (větší nebo rovno), `!=` (nerovná se) a `==` (rovná se).
+
+Pomocí Booleovy algebry pak můžeme tyto dotazy různě kombinovat. Výhodný je i operátor `%in%`.
+
+```{r}
+#| label: booleova-algebra
+# najděme prvky vektoru 'objem', které jsou menší než 0.5 nebo větší než 2 m3
+objem < 0.5 | objem > 2
+```
+
+Protože počítačová reprezentace desetinných čísel je určitým způsobem omezená na nějaký počet desetinných míst, existuje pro jejich bezpečnější porovnávání funkce `near()`. Demonstrujme tento fakt na porovnání hodnot determinantu vytvořené matice a determinantu její transpozice.
+
+```{r}
+#| label: porovnani-desetinnych-mist
+# funkcí matrix() vytváříme matice z vektorů
+# funkce det() pak počítá determinant matice
+mat <- matrix(1:9,
+              ncol = 3)
+
+# nejprve porovnáme bez funkce near()
+# funkce t() transponuje matici
+det(mat) == det(t(mat))
+
+# ale determinant transponované matice je velmi blízko nule
+det(t(mat))
+
+# tak zkusme porovnat za využití funkce near()
+near(det(mat),
+     det(t(mat)))
+```
+
+Jak je to s chybějícími hodnotami? Jak se na ně ptáme? Na tyto otázky si můžeme odpovědět jednoduchým příkladem, kde si některé hodnoty vektoru 'objem' nahradíme znaky `NA`.
+
+```{r}
+#| label: chybejici-hodnoty
+# vybrané prvky vektoru můžeme nahradit pomocí hranatých závorek a přiřazovacího operátoru
+objem2 <- objem
+
+# uvnitř hranatých závorek vznikají dvě čísla
+objem2[c(1, length(objem2))] <- NA # využíváme opět recyklaci
+
+objem2
+
+# chybné je ptát se na chybějící hodnoty operátorem ==
+# namísto toho se využívá funkce is.na()
+is.na(objem2)
+
+# operátor ! (vykřičník) pomáhá hledat opak (neguje)
+!is.na(objem2)
+```
+
+Chybějící hodnoty `NA` jsou naprosto přirozeným jevem, a proto si zaslouží být zachyceny i jinými funkcemi. Funkcemi `any()` a `all()` zjišťujeme, zda nějaká podmínka platí pro některé nebo pro všechny prvky. Fukce `sum()` a `mean()` mohou být využity pro zjištění počtu pravd nebo podílu pravd. Pojďme si potenciál právě jmenovaných funkcí ukázat právě na chybějících hodnotách.
+
+```{r}
+#| label: chybejici-hdonoty-a-sumarizace
+any(is.na(objem2))
+
+all(is.na(objem2))
+
+# tohle funguje, protože logické vektory mohou být snadno konvertovány a numerické vektory s hodnotou 0 pro nepravdu a hodnotou 1 pro pravdu
+as.numeric(is.na(objem2))
+
+sum(is.na(objem2))
+
+mean(is.na(objem2))
+```
+
+Zmiňované hranaté závorky lze namísto čísly naplňovat logickými vektory. Jsou pak vybrány sloupce nebo řádky tabulky podle pozice pravd v logickém vektoru.
+
+Logické vektory s hodnotami `TRUE` a `FALSE` lze dále využít ve funkcích `if_else()` (což je obdoba funkce KDYŽ v Excelu) a `case_when()` (řekněme, že jde o obecnější `if_else()` akceptující více podmínek). Demonstrujme sílu těchto funkcí tam, kde se přístupy *tidyverse* využívají nejvíce – v tabulkách.
+
+Nejprve si přidáme sloupec 'objem2' do naší tabulky se stromy. K tomu dobře poslouží funkce `mutate()`. Následně ukážeme, jak lze funkce, které jsme se naučili na vektorech aplikovat uvnitř funkce `filter()` pro výběr řádků, příp. také ve funkcích `mutate()` nebo `select()`, kde se logické vektory využívají k výberu sloupců (i jinak, než že vybereme všechny sloupce pomocníkem `everything()`).
+
+```{r}
+#| label: logicke-vektory-a-tabulky
+# nejprve přidáme sloupec
+df <- df |> 
+  mutate(objem2 = objem2)
+
+# nyní můžeme aplikovat funkci filter() např. pro výběr řádků, kde je sloupec 'objem 2' s chybějící hodnotou, nebo naopak bez ní
+df |> 
+  filter(is.na(objem2)) # uvozovky kolem názvů vybraných sloupců nejsou nutné
+
+df |> 
+  filter(!is.na(objem2))
+
+# ale i uvnitř funkce filter() lze kombinovat
+df |> 
+  filter(!is.na(objem2) & objem < 0.5)
+```
+
+Ukažme nyní význam funkce `if_else()` např. na nahrazení chybějících hodnot jejich odhady.
+
+```{r}
+#| label: ifelse-v-tabulce
+# prostudujte argumenty funkce if_else()
+df2 <- df |> 
+  mutate(objem2 = if_else(is.na(objem2),
+                          1,
+                          objem2))
+
+# nyní bychom neměli mít žádné chybějící hodnoty ve sloupci objem2, a tutíž následující dotaz na řádky vrací prázdnou tabulku
+df2 |> 
+  filter(is.na(objem2))
+```
+
+Přidejme do tabulky `df` nový sloupec s pořadím, ať máme kd sipozici i jiný typ sloupce. Ukažme pak, jak lze na základě typů sloupců, tyto sloupce vybírat. Samozřejmě se zde uplatňuje logický vektor.
+
+```{r}
+#| label: vyber-sloupcu-s-logickymi-vektory
+# sloupec s pořadím získáme např. funkcí row_number()
+df <- df |> 
+  mutate(poradi = row_number())
+
+# podívejme se na typy sloupců
+df
+
+# nyní jsme připraveni na výběr sloupců podle těchto typů, jelikož tu máme funkce jako is.integer(), is.double() nebo is.numeric()
+# v kombinaci s pomocníkem where() máme velmi mocný nástroj pro manipulaci se sloupci
+df |> 
+  select(where(is.integer))
+
+df |> 
+  select(where(is.double))
+
+df |> 
+  select(where(is.numeric))
+```
+
+Dodejme, že těchto výběrů sloupců lze s výhodou využít ve funkci `mutate()`, a to právě uvnitř pomocníka `across()`. Vytvořme nové sloupce s přirozenými logaritmy hodnot pro všechny celočíselné sloupce.
+
+```{r}
+#| label: logicky-vektor-jako-pomocnik-mutate
+df |> 
+  mutate(across(where(is.integer),
+                log,
+                .names = "poradi2"))
+```
+
+Ukažme ještě sílu operátoru `%in%`, díky kterému nemusíme vypisovat dlouhé kombinace s operátorem `|` (nebo).
+
+```{r}
+#| label: operator-in
+# totiž namísto tohoto
+df |> 
+  filter(poradi == 5 | poradi == 9 | poradi == 14)
+
+# můžeme psát toto
+df |> 
+  filter(poradi %in% c(5, 9, 14))
+```
+
+Je zapotřebí umět odlišovat funkce `any()` a `all()` od funkcí `if_any()` a `if_all()`. Druhé jmenované funkce můžeme opět používat ve funkci `filter()`, pokud nás zajímá platnost nějaké podmínky napříč vybranými sloupci. I na podkladě tohoto se pak dají vybírat řádky.
+
+```{r}
+#| label: ifany-uvnitr-filter
+# vyberme z naší tabulky všechny řádky, kde alespoň v jednom sloupci máme chyybějící hodnotu´
+df |> 
+  filter(if_any(everything(),
+                is.na))
+```
+
+## Čísla
+
+Již jsme si všimli, že v `R` existuje rozdíl mezi celými čísly (integer) a čísly s desetinným znakem (floating point; double), které lze obecně označovat za numerické hodnoty. Čísla jsou samozřejmě nejčastějším typem dat, se kterými ve statistice a modelech pracujeme. Na rozdíly mezi těmito typy si musíme dávat velký pozor. Ukažme, že existuje rozdíl mezi aritmetickou posloupností tvořenou zkratkovitě a aritmetickou posloupností tvořenou obecnou funkcí `seq()`.
+
+```{r}
+#| label: aritmeticka-posloupnost
+# zkratkovitě lze aritmetickou posloupnost s diferencí 1 tvořit takto
+posl1 <- 1:9
+
+# obecně takto
+posl2 <- seq(from = 1,
+             to = 9,
+             by = 1)
+
+# rovnají se tyto dva objekty?
+identical(posl1, posl2)
+
+# důvodem pro negativní odpověď je právě třída objektu
+posl1 |> 
+  class()
+
+posl2 |> 
+  class()
+
+# abychom dostali celá čísla i ve druhém případě, musíme za čísla ve funkci seq() psát velké písmeno L
+# zde již i vynecháváme názvy argumentů
+posl3 <- seq(1L,
+             9L,
+             1L)
+
+identical(posl1, posl3)
+```
+
+Nějaké matematické funkce jsme si již ukázali. Ukázali jsme si také, že existují funkce `group_by()` a `povot_longer()`. Vedle funkce `mutate()` tuto kombinaci využijeme i ve funkci `summarize()`, kterou používáme např. pro výpočet průměrů po skupinách. Ukážeme ale také, že existují různé strategie, jak se k výsledku dostat.
+
+```{r}
+#| label: summarize
+# nejprve vypočítáme průměry pro případ dlouhé tabulky
+df |> 
+  select(1:3) |> # vybíráme schválně první tři sloupce
+  pivot_longer(cols = everything(),
+               names_to = "parametr",
+               values_to = "val_num") |> 
+  group_by(parametr) |> 
+  summarize(prumer = mean(val_num),
+            cetnost = n()) # záměrně přidáváme další proměnnou, abychom věděli, že sumarizačních funkcí můžeme volit klidně několik; funkce n() vrací absolutní četnost skupiny
+
+# nyní ukažme způsob s využitím funkce across()
+df |> 
+  select(1:3) |> 
+  summarize(across(everything(),
+                   mean,
+                   .names = "{.col}_prumer")) # zde využíváme efektu známého pod pojmem glueing textových řetězců, o kterém se dozvíme více příště
+```
+
+Pokud chceme ve druhém případě aplikovat více funkcí najednou, lze to udělat tak, že tyto funkce schováme do seznamu, jak praví dokumentace.
+
+K četnosti skupin se lze dostat rychlejším způsobem, existuje pro to funkce `count()`.
+
+```{r}
+#| label: count
+df |> 
+  select(1:3) |> 
+  pivot_longer(cols = everything(),
+               names_to = "parametr",
+               values_to = "val_num") |> 
+  count(parametr)
+
+# tato funkce má i nějaké argumenty, prostudujte jejich význam
+```
+
+Zajímavá je např. funkce `round()`, jejíž obdobou jsou funkce `floor()` a `ceiling()`. U funkce `round()` lze zadávat jako argument `digits` i záporá čísla, což značí zaokrouhlování na desítky, stovky apod.
+
+```{r}
+#| label: round
+round(100 + pi, # ke stovce přidáváme číslo pí
+      digits = 1)
+
+round(100 + pi,
+      digits = -1)
+
+floor(100 + pi)
+
+ceiling(100 + pi)
+```
+
+Práce s čísly je tak častá, že si význam dalších potřebných funkcí budeme ukazovat dále i v lekcích, které se čísly primárně nezabývají.
