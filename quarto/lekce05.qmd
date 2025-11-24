@@ -1,0 +1,410 @@
+---
+title: "Textové řetězce a základy práce s regulárními výrazy; faktory"
+author: "Ondřej Ledvinka"
+format: html
+embed-resources: true
+toc: true
+editor: visual
+date: 2025-11-18
+date-modified: '`r Sys.Date()`'
+bibliography: references_RveFG.bib
+csl: geografie-sbornik-cgs.csl
+theme: darkly
+lang: cs
+engine: knitr
+---
+
+## Prerekvizity
+
+V následujícím se předpokládá, že již máme založený R projekt ze začátku kurzu. To znamená, že máme možnost využívat relativní cesty k souborům a jiné výhody práce s R projektem. Dále se předpokládá, že máme kvalitní připojení k internetu, jelikož se může stát, že budeme instalovat chybějící balíčky.
+
+Pokud možno, budeme také pracovat s nejnovějšími verzemi `R` (v současnosti `r R.Version()$version.string` – `r R.Version()$nickname` z `r paste(R.Version()$year, R.Version()$month, R.Version()$day, sep = "-")`) a RStudio (v současnosti RStudio 2025.09.2+418 "Cucumberleaf Sunflower" z 2025-10-20).
+
+## Textové řetězce
+
+S textovými řetězcemi jsme se již v předchozích lekcích několikrát potkali, ale zatím jsme jim nevěnovali patřičnou pozornost. Textové řetězce zaujímají v datové vědě velmi důležité místo, protože se nám vyplatí je tvořit z důvodu rozpoznání proměnných a stejně tak pozorování. Textové řetězce lze skládat a naopak lze pracovat s jejich částmi, které často extrahujeme. Viděli jsme i význam textových řetezců při tzv. grupování tabulek. Velice stroze jsme si říkali, že textové řetězce lze konvertovat na jiné třídy objektů, jako jsou faktory (nominální veličiny – kategorické či ordinální veličiny) apod.
+
+Při práci s textovými řetezci ve smylsu *tidyverse* využíváme nejčastěji funkce balíčku `stringr`. Velmi dobře je poznáme, neboť jejich názvy téměř výhradně začínají na `str_`. Na začátku práce ale stejně načteme celé jádro *tidyverse*, nikdy nevíme, kdy se nám budou hodit funkce mimo pouhý balíček `stringr`. Kromě toho načteme metadatové soubory, kde se nacházejí sloupce typu *character string*, abychom na nich mohli práci s textovými řetězci demonstrovat. Tato data máme k dispozici v ZIP souboru v Classroomu u lekce 02.
+
+```{r}
+#| label: zacatek-prace
+# kromě tidyverse tedy načteme i balíček arrow, abychom mohli s metadaty vůmec pracovat
+xfun::pkg_attach2("tidyverse",
+                  "arrow")
+
+meta1 <- open_dataset("metadata/wq_water_metadata1") |> 
+  collect()
+
+meta1
+
+meta2 <- open_dataset("metadata/wq_water_metadata2") |> 
+  collect()
+
+meta2
+```
+
+## Tvorba textových řetězců
+
+Tvorbu nových řetězců provádíme nejčastěji uzavíráním textu do uvozovek[^1]. Sestavování vektorů provádíme klasicky funkcí `c()`, pocházející ze základní instalace `R`.
+
+[^1]: Pokud budeme chtít do uvozovek vložit další uvozovky, lze kombinovat jednoduché a dvojité uvozovky. Vždy je ale třeba dbát na jednotu, tedy buď jednoduché uvozovky vkládat do dvojitých uvozovek, nebo dvojité uvozovky vkládat do jednoduchých uvozovek. *tidyverse* upřednosňuje první způsob, viz kap. 14 knihy @wickham2023.
+
+```{r}
+#| label: retezce-ve-vektorech
+# ukažme, jak se takový textový vektor tvoří
+
+vek <- c("Vltava", "Labe", "Morava")
+
+# vektor s textovými řetězci poznáme tak, že slova (nebo jiné objekty) při tisku ohraničují uvozovky
+vek
+
+# v tabulkách typu tibble sice uvozovky nevidíme, ale typ sloupce je napovězen pod jeho názvem
+
+# samozřejmostí je editace vektorů za využití hranatých závorek, jak jsme si to ukázali s vektory logickými
+# takto můžeme vkládat i nové prvky
+vek <- c(vek[c(1, 2)],
+         c("Úpa", "Metuje"),
+         vek[3])
+
+vek
+```
+
+Textové vektory lze snadno získávat konverzí z vektorů jiných tříd, nebo extrahováním sloupců z tabulek.
+
+```{r}
+#| label: konverze-extrahování
+# konverze
+c(T, F) |> 
+  as.character()
+
+# ukažme ještě jednou extrahování
+# funkce unique() vrátí unikátní hodnoty
+reky <- meta1 |> 
+  pull(stream_name) |> 
+  unique()
+
+# alternativně lze použít funkci distinct()
+reky2 <- meta1 |> 
+  distinct(stream_name) |> 
+  pull()
+
+# pokud chceme mít názvy řek řazené vzestupně dle abecedy, můžeme použít funkci sort() - na vektory, nebo funkci arrange() - na sloupce tabulky
+# zde si ale dávejme pozor na tzv. llokalizaci; záleží na nastaveném jazyce, protože angličtina třeba nezná písmeno 'ch'
+reky <- meta1 |> 
+  pull(stream_name) |> 
+  unique() |> 
+  sort()
+
+# funkce zatímco base-R funkce dětí nastavení operačního systému, funkce balíčků tidyverse jsou nastaveny tak, že je upřednostněna angličtina
+reky2 <- meta1 |> 
+  distinct(stream_name) |> 
+  arrange(stream_name) |> 
+  pull(stream_name)
+
+identical(reky, reky2)
+
+reky
+
+reky2
+
+# proto není radno zakládat for cykly na textových řetězcích, pokud očekáváme pořadí operací!
+# nevyplatí se to ani tehdy, když spolupracujeme s lidmi, kteří mají jinak nastavený OS než my; vlastně se může jednat o nás samotné pokud máme různé OS na vlastních pracovních stanicích
+```
+
+## Funkce `str_c()` a `str_glue()`
+
+Obě funkce jsou určené k lepení textových řetězců. Obě akceptují recyklaci vektorů, ale jejich přístup se trochu liší. Funkce `str_glue()` je založena na balíčku `glue` a zbavuje nás povinnosti psát tolik uvozovek.
+
+```{r}
+#| label: lepeni-retezců
+# funkce str_glue() lepí řetězce pomocí složených závorek uvnitř stavěného řetězce pomocí nějakého vektoru, který již existuje
+str_glue("Moje řeka se jmenuje {vek}")
+
+str_c("Moje řeka se jmenuje ", vek)
+
+# pozor! str_c() nemá argument pro mezery a jiné znaky, které mají za úkol jednotlivé texty oddělovat
+
+# str_glue() přidává vektoru i novou třídu, což je vidět i z vlastního tisku do konzole
+
+str_glue("moje řeka se jmenuje {vek}") |> 
+  class()
+
+str_c("moje řeka se jmenuje ", vek) |> 
+  class()
+```
+
+## Funkce `str_flatten()`
+
+Tato funkce bere vektor s řetězci a všechny jeho prvky kombinuje do jednoho řetězce.
+
+```{r}
+#| label: kombinovani-prvku-vektoru-do-jednoho
+str_flatten(vek,
+            collapse = ", ")
+
+# argumentem last můžeme upravit poslední propojení prvků vektoru
+str_flatten(vek,
+            collapse = ", ",
+            last = " a ")
+
+# jako další příklad můžeme uvést možnosti využití funkce str_flatten() ve funkci summarize()
+# řekněme, že budeme chtít do sloupce vedle sloupce s jednotkami vypsat seznam s prvky všech jakostních ukazatelů, které jsou v těchto jednotkách udávány
+meta2 |> 
+  group_by(unit_id) |> 
+  summarize(ukazatel = str_flatten(tscon_id,
+                                   collapse = ","))
+```
+
+## Dotazování se na délku řetězce a subsetting řetězce
+
+K těmto účelům slouží funkce `str_length()` a `str_sub()`. Funkce jsou ovšem opět citlivé na lokalizaci a kódování znaků. Totiž některé znaky s akcenty mohou být kódovány různě, a tak např. `str_length()` může pro přehlasované u (ü) vracet jak délku 1, tak délku 2 (to podle toho, jestli je přehláska brána jako další znak, nebo je brána jako součást písmena). Držme se proto raději nejlépe engličtiny, pokud to situace umožňuje.
+
+Vypočítejme délky žetězců v našich vektorech s řekami (a sestavme tak tabulky o dvou sloupcích).
+
+```{r}
+#| label: delky-rezezcu
+tab <- tibble(reky = reky,
+               n = str_length(reky))
+
+tab
+
+tab2 <- tibble(reky2 = reky2,
+               n = str_length(reky2))
+
+tab2
+```
+
+Funkce `str_sub()` může být nápomocná, když budeme chtít z řetězců vybrat znaky od nějaké pozice do nějaké pozice. Takto si např. můžeme zjistit četnosti prvních písmen v řekách uvedených v našich metadatech. A protože funkce `str_sub()` akceptuje i záporná čísla v argumentech týkajících se pozic znaků, lze stejnou ůlohu provést pro poslední písmena či znaky.
+
+```{r}
+#| label: prvni-a-posledni-pismena-v-nazvech-rek
+# nejprve četnosti prvních písmen (již provádíme jen pro první tabulku tab)
+tab |> 
+  count(prvni = str_sub(reky, 1, 1),
+        sort = T) # argument sort řadí podle četnosti sestupně
+
+# poté totéž pro poslední znaky (opět jen pro tabulku tab)
+tab |> 
+  count(posledni = str_sub(reky, -1, -1),
+        sort = T)
+```
+
+Dodejme, že funkce `count()` je jakási zkratka grupování a sumarizací. V dokumentaci funkce `group_by()` si můžeme všimnout, že si novou grupující proměnnou můžeme uvnitř ní vytvořit a pojmenovat. Proto to lze provést i ve funkci `count()`.
+
+Poznamenejme, že při tvoření textových řetězců je třeba pamatovat na fakt, že některé znaky mají speciální význam. Proto se dbá jejich tzv. *escaping*. Více o tom pojednává kap. 14 knihy @wickham2023.
+
+## Regulární výrazy
+
+Speciální znaky se týkají i tzv. regulárních výrazů, kterým se věnuje celá kap. 15 knihy @wickham2023. Zde se zaměříme jen na několik základních případů a na jejich význam v pomocných funkcích pro omezení se na hledané řádky (ve funkci `filter()`), příp. také pro výběr sloupců podle obsahu jejich názvu (ve funkci `select()`).
+
+S funkcí `filter()` se dobře pojí pomocník `str_detect()`. Tímto nemusíme hledat přesné shody operátorem `==` nebo podmnožiny dané operátorem `%in%`. Limitování se na řádky lze zobecnit na přibližnou shodu. A je to právě funkce `str_detect()`, která akceptuje i regulární výrazy.
+
+```{r}
+#| label: detekovani
+# řekněme, že nás zajímají jen řádky v tabulce meta1, kde se ve sloupci stream_name nachází slovo 'Labe' na kterémkoliv místě
+meta1 |> 
+  filter(str_detect(stream_name, "Labe"))
+
+# nyní se ptejme na řádky, kde stream_name začíná slovem 'Labe'
+# použijeme k tomu tzv. kotvu ^
+meta1 |> 
+  filter(str_detect(stream_name, "^Labe"))
+
+# vidíme, že v jednom řádku se slovo 'Labe' na začátku nenachází
+# když se na takový řádek budeme chtít zeptat, pomůže třeba hledání slova 'Labe' na konci?
+# pokud hledáme slovo na konci řetězce, existuje pro to jiná kotva, a to znak $
+meta1 |> 
+  filter(str_detect(stream_name, "Labe$"))
+
+# tohle nám moc nepomohlo, protože existují i řádky s pouhým slovem 'Labe', zkusme využít toho, že funkce str_detect() nabízí také negace
+meta1 |> 
+  filter(str_detect(stream_name, "^Labe",
+                    negate = T),
+         str_detect(stream_name, # lze se ptát i kombinacemi (zde čárka namísto operátoru &)
+                    "Labe"))
+
+# i tohle pomůže, způsobů zřejmě existuje více
+meta1 |> 
+  filter(str_detect(stream_name, ".+Labe$")) # pro rozklíčování regulárního výrazu konzultujte kap. 14 v knize R4DS
+```
+
+Funkce `select()` má sice více pomocníků, jako jsou například `starts_with()`, `contains()` a `ends_with()`, ale neuniverzálnější je funkce `matches()`, která také akceptuje regulární výrazy pro hledání kýžených sloupců[^2].
+
+[^2]: Tyto pomocníci budou jistě fungovat i uvnitř jiných funkcí, které pracují s výbery sloupců – např. `mutate()` nebo `summarize()`.
+
+```{r}
+#| label: matches
+# vyberme např. sloupce z tabulky meta2, jejichž název začíná na 'tscon'
+# nejprve univerzálním pomocníkem matches() s regulárním výrazem
+meta2 |> 
+  select(matches("^tscon"))
+
+# potom pomocníkem starts_with()
+meta2 |> 
+  select(starts_with("tscon"))
+```
+
+## Nahrazování částí řetězců
+
+S hledáním částí řetězců úzce souvisí nahrazování nějterých znaků. Pro tyto účely *tidyverse* nabízí hlavně funkce `str_replace()` (nahrazuje první výskyt) a `str_replace_all()` (nahrazuje všechny výskyty). Samozřejmostí jsou regulární výrazy při hledání znaků v textových řetězcích, ale ve velké většině případů může stačit pouze jeden znak či dva.
+
+```{r}
+#| label: nahrazovani
+# ukažme nahrazení prvního písmene 'a' v našem vektoru s menším počtem řek
+# nejprve, co hledáme, pak čím to chceme nahradit
+vek |> 
+  str_replace("a",
+              "-")
+
+# nyní nahrazení všech písmen 'a'
+vek |> 
+  str_replace_all("a",
+                  "-")
+```
+
+V těchto funkcích sice můžeme použít pro odstranění ve druhém argumentu `""`, ale existují i varianty funkcí `str_remove()` a `str_remove_all()`.
+
+```{r}
+#| label: odstraneni_znaku
+vek |> 
+  str_remove("a")
+
+vek |> 
+  str_remove_all("a")
+```
+
+Dodejme, že existují i jiné nahrazovací funkce.
+
+```{r}
+#| label: nahrazovani2
+# nejdříve cvičný vektor o jednom prvku
+# zde není nutné uzavírat do funkce c(), protože máme jen jeden prvek
+vek2 <- "R for Data Science"
+
+# ukázky
+vek2 |> 
+  str_to_lower()
+
+vek2 |> 
+  str_to_upper()
+
+vek2 |> 
+  str_to_title()
+
+vek2 |> 
+  str_to_sentence()
+
+vek2 |> 
+  str_to_camel()
+
+vek2 |> 
+  str_to_kebab()
+
+vek2 |> 
+  str_to_snake()
+```
+
+## Další funkce, kde lze regulární výrazy uplatnit
+
+Regulární výrazy lze uplatnit i při hledání souborů na v souborovém systému funkcemi `list.files()` či `dir()`. Když necháme hledání znaků ve vektorech na později až po načtění nějakého vektoru (třeba názvů souborů), lze aplikovat funkci `str_subset()`[^3].
+
+[^3]: Nepleteme si s funkcí `str_sub()`.
+
+```{r}
+#| label: subset
+# nejprve seznam souborů
+soubory <- dir("metadata",
+               recursive = T) # díváme se i do podadresářů
+
+# výsledkem je vektor s relativními cestami ke dvěma souborům
+soubory
+
+# teď se zaměříme jen na metadata1
+soubory |> 
+  str_subset("metadata1")
+```
+
+Pokud existují funkce na slepování řetězců ve vektorech, musí existovat i funkce, které činí opak, tedy trhají řetězce na části. Zde se uplatňují funkce, které předpokládají nějaké znaky oddělující v komplexnějším řetězci dva a více řetězců, které chceme dostat do separátních řetězců. Tohle je úkol pro funkci `str_split()`, která vrací třídu seznam, ale lze ji kombinovat s funkcí `unlist()` abychom dostali opět vektor. Existují i varianty této funkce pro velmi časté úkony, jako je `str_split_i()`.
+
+Ukažme, jak tyto funkce pracují.
+
+```{r}
+#| label: splitting
+# zkusme nejprve roztrhat vektor vek podle písmene 'a'
+vek |> 
+  str_split("a")
+
+vek |> 
+  str_split("a") |> 
+  class()
+
+vek |> 
+  str_split("a") |> 
+  unlist()
+
+# pro demonstraci funkce str_split_i() nejprve vytvoříme příkladový vektor
+vek2 <- c("Vltava_Vraňany",
+          "Labe_Kostelec")
+
+# teď lze separovat jednotlivé části podle indexu a stavět tak i novou tabulku
+reky3 <- vek2 |> 
+  str_split_i("_",
+              1)
+
+stanice <- vek2 |> 
+  str_split_i("_",
+              2)
+
+tibble(reka = reky3,
+       stanice = stanice)
+```
+
+## Faktory
+
+Faktory (kategorocké proměnné) připomínají (např. tiskem do konzole) textové řetězce, ale na rozdíl od řetězců mají důležitý atribut – levely (úrovně). Význam úrovní je širší, ale hlavně:
+
+1.  Úrovně mohou být definovány, ale jejich výskyt ve vektoru nemusí být podmínkou.
+
+2.  Úrovně umožňují řadit vektory neabecedně, a to různým způsobem (např. podle četnosti, což může výt výhodné při kreslení a čtení grafů).
+
+Faktorům je v *tidyverse* věnován celý balíček `forcats` a v knize @wickham2023 je najdeme v kap. 16. Základní funkcí pro tvorbu faktorů je zde funkce `fct()`, která může, ale také nemusí dostat informaci o úrovních[^4].
+
+[^4]: Když ji nedostane, vytvoří si úrovně automaticky podle vektoru s textovými řetězcemi, ze kterých vychází při konferzi na faktory. Takové počínání je však nebezpečné, a to především kvůli možným překlepům v textových řetězcích.
+
+```{r}
+#| label: tvorba-faktoru
+# nejprve vektor textových řetězců bez překlepu
+x <- c("Dec", "Apr", "Jan", "Mar")
+
+# když správně nadefinujeme úrovně (nebo máme překlep v původním textovém vektoru), dostaneme pro případy, které nelze zařadit, chybu
+# to je zásadní rozdíl od tvorby faktorů základní R funkcí factor()
+x <- fct(x,
+         levels = c("Jan",
+                    "Feb",
+                    "Mar",
+                    "Apr",
+                    "May",
+                    "Jun",
+                    "Jul",
+                    "Aug",
+                    "Sep",
+                    "Oct",
+                    "Nov",
+                    "Dec"))
+
+x
+
+# na úrovně se lze ptát funkcí levels()
+x |> 
+  levels()
+```
+
+Úpravy faktorů se týkají především změn řazení úrovní nebo modifikací těchto úrovní.
+
+Funkce `fct_reorder()` řadí úrovně podle nějaké jiné proměnné,. Funkce `fct_relevel()` přenáší vybranou úroveň vpřed, resp. si můžeme vybrat, kam takovou úroveň posuneme. Funkce `fct_infreq()` řadí úrovně podle četnosti sestupně[^5].
+
+[^5]: Opačné řazení zařídí funkce `fct_rev()`.
+
+Funkce `fct_recode()` a `fct_collapse()` se naopak zaměřují na přejmenovávání úrovní či slučování příliš mnoha úrovní.
+
+Prostudujte dokumentaci balíčku `forcats` a zjistěte, které další funkce tu máme k dispozici a k čemu slouží.
