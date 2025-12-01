@@ -1,0 +1,363 @@
+---
+title: "Datum a čas; další speciální konstanty; propojování tabulek"
+author: "Ondřej Ledvinka"
+format: html
+embed-resources: true
+toc: true
+editor: visual
+date: 2025-11-25
+date-modified: '`r Sys.Date()`'
+bibliography: references_RveFG.bib
+csl: geografie-sbornik-cgs.csl
+theme: darkly
+lang: cs
+engine: knitr
+---
+
+## Prerekvizity
+
+V následujícím se předpokládá, že již máme založený R projekt ze začátku kurzu. To znamená, že máme možnost využívat relativní cesty k souborům a jiné výhody práce s R projektem. Dále se předpokládá, že máme kvalitní připojení k internetu, jelikož se může stát, že budeme instalovat chybějící balíčky.
+
+Pokud možno, budeme také pracovat s nejnovějšími verzemi `R` (v současnosti `r R.Version()$version.string` – `r R.Version()$nickname` z `r paste(R.Version()$year, R.Version()$month, R.Version()$day, sep = "-")`) a RStudio (v současnosti RStudio 2025.09.2+418 "Cucumberleaf Sunflower" z 2025-10-20).
+
+## Datum a čas
+
+Práce s datumem a časem je velmi důležitá, ve fyzické geografii často narážíme na data uspořádaná do formy časových řad (typické např. pro hydrologii a klimatologii). Samozřejmostí je omezení se na řádky v nějakém rozmezí datumů nebo dokonce omezení se na konkrétní datum. S časem také souvisí správné zacházení s časovými zónami, abychom se dopočítali správného trvání nějakého jevu. `R` je velmi citlivé na časové zóny, přičemž neznalost tohoto této skutečnosti se nám může vymstít např. při práci s databázemi.
+
+`R` ve svém základu sice přichází s funkcemi pracujícími s datumem a časem, ale *tidyverse* má celý svůj balíček věnovaný této problematice a také dosti práci s datumem a časem jeho funkce usnadňují. Tento balíček má název `lubridate` a je mu věnována celá kap. 17 knihy @wickham2023, kde je určitě vhodné nastudovat si tabulku 17.1, která prozrazuje, jak jsou jednotlivé komponenty datumu a času zkracovány, pokud bychom naopak z datumu a času chtěli dostat zpátky nějaký text[^1].
+
+[^1]: Lze tak získávat jednotlivé komponenty separátně, ale i jejich kombinace (např. pro tisk do nějaké publikace). Viz také funkci `format()`.
+
+Datum a čas si `R` standardně bere z nastavení operačního systému, ale existují i případy, kdy to můžeme změnit jistými funkcemi. Typické je pro to např. načítání dat z textových souborů, kdy datum a čas můžeme upravit argumentem `locale` – viz např. funkce `read_delim()` nebo `read_csv()`.
+
+Demonstrujme nějaké základy.
+
+```{r}
+#| label: zaklady
+# nejprve načteme tidyverse
+# a rovnou i arrow, protože budeme opět potřebovat data z .parquet souborů
+xfun::pkg_attach2("tidyverse",
+                  "arrow")
+
+# ten obsahuje i balíček lubridate, a tedy můžeme použít následující funkce pro zjištění aktuálního datumu nebo času
+today()
+
+now()
+
+# díky tabulce 17.1 knihy R4DS víme, že můžeme jednotlivé komponenty získat pomocí nějakých zkratek
+# ukažme si to hlavně na datumu
+today() |> 
+  format(format = "%Y")
+
+today() |> 
+  format(format = "%y")
+
+today() |> 
+  format(format = "%m")
+
+today() |> 
+  format(format = "%d")
+```
+
+## Funkce balíčku `lubridate` usnadňující zisk komponent
+
+Ukázali jsme si, jak lze extrahovat jednotlivé komponenty pomocí několika základních funkcí `R`. Nyní si ukážeme, že existují jednodušší postupy získávání těchto komponent. Ty navíc ve výsledku jsou třídy *integer*, což může mít své výhody, kdy např. po takové konverzi můžeme grupovat či vybírat řádky tabulky.
+
+```{r}
+#| label: extrahovani-komponent
+# zisk roku
+year(now())
+
+# zisk měsíce
+month(now())
+
+# u dnů rozlišujeme hned několik typů
+yday(now()) # tzv. Juliánský den (pořadí dne v roce od 1 do 365, někdy 366)
+
+mday(now()) # den v měsíci
+
+wday(now(), # den v týdnu
+     week_start = 1) # když nenastavíme, je neděle brána jako první den v týdnu
+
+hour(now())
+
+minute(now())
+
+second(now())
+```
+
+## Funkce balíčku `lubridate` pro sestavení datumu a času z textového řetězce
+
+`R` respektuje datum a čas (a taky je tak ukládá do souborů), jak mu nakazuje celosvětová norma *ISO8601*. V té se zleva doprava jde od nevyšších časových jednotek (rok) k nejnišším časovým jednotkám (sekunda), kde komponenty datumu jsou odděleny spojovníky, následuje mezera (nebo písmeno T) a pak probíhá čas, jehož komponenty jsou odděleny dvojtečkami[^2]. Někdy ale dostaneme k rukám textové řetězce ke konverzi na datum (sloupce značeny `<date>`) či datum a čas (sloupce značeny `<dttm>`), které neodpovídají tomuto řazení. Proto balíček `lubridate` přichází s funkcemi jejichž názvy jsou složeny z počátečníh písmen názvů jednotlivých komponent. Ukažme si jejich význam.
+
+[^2]: Někdy se ještě přidává písmeno Z naúplný konec, které značí, že čas je uvedený v zóně UTC.
+
+```{r}
+#| label: funkce-ymd-a-ji-podobne
+# funkce ymd() očekává standard, tedy rok-mesic-den
+ymd("2025-11-25")
+
+# lze i ignorovat uvozovky a psát jen celé číslo
+ymd(20251125)
+
+# a zřejme lze psát i toto
+# stačí, když komponenty budou dodržovat pořadí
+ymd("2025 Nov. 25")
+
+# náš zápis datumu lze konvertovat na datum pomocí funkce dmy()
+dmy("25. 11. 2025")
+
+# v USA často zaměňují pořadí měsíce a dne oproti našemu uvádění datumu
+# zde ted pomůže funkce mdy()
+mdy("11/25/2025")
+
+# doporučuje se psát rok formou čtyř číslic, jinak hrozí zmatení těchto funkcí a pomůže až naše znalost a základní funkce R
+
+# jak je to s datumem a časem dohromady?
+# tyto funkce umožňují komponenty i vynechávat
+dmy_hm("25. 11. 2025 08:10",
+       tz = "Europe/Prague") # k časovým zónám se vrátíme
+```
+
+## Funkce balíčku `lubridate` pro sestavení datumu a času z jedntolivých komponent
+
+Kromě toho, že můžeme na datum (či datum s časem) konvertovat textové řetězce, stává se, že máme napřed k dispozici jednotlové komponenty a ty pak potřebujeme sloučit do datumu (či datumu s časem). Zde pomáhají funkce `make_date()` a `make_datetime()`.
+
+Pro ukázku si vezmeme časové řady nasycení vody kyslíkem v terénu ze souboru s daty, který nyní máme jako nový přiložený materiál v ZIP souboru.
+
+```{r}
+#| label: funkce-make-date
+# nejprve načteme tabulku s daty a vyseparujeme řádky s nasycením vody kyslíkem
+# ze souboru s metadaty vztahujících se k ukazatelům můžeme zjistit, idetifikátor nasycení kyslíkem je CA0005
+# k tomu se omezme jen na rok 2008, ničemu to neuškodí
+nasyceni <- open_dataset("data/wq_water_data") |> 
+  filter(tscon_id == "CA0005",
+         year == 2008) |> 
+  collect()
+
+# prohlédneme
+nasyceni
+
+# vidíme, že rok ji extrahováný máme
+# poďme tedy podobně extrahovat do dalších sloupců jednotlivé další komponenty ze sloupce dt
+nasyceni <- nasyceni |> 
+  mutate(month = month(dt),
+         day = mday(dt),
+         hour = hour(dt),
+         minute = minute(dt),
+         second = second(dt))
+
+# prohlédneme
+# zaměříme se jen na sloupce, které nás zajímají
+nasyceni |> 
+  select(obj_id,
+         year:second)
+
+# demonstrujme sílu funkcí make_date() a make_datetime() a sestavme si zpět sloupec s datumem a sloupec s datumem a časem
+nasyceni <- nasyceni |> 
+  mutate(datum = make_date(year = year, 
+                           month = month,
+                           day = day),
+         cas = make_datetime(year, # názvy argumentů lze samozřejmě vynechávat
+                             month,
+                             day,
+                             hour,
+                             minute,
+                             second)) # pokud jsou vteřiny rovné stále nule, lze tento argument úplně vynechat (to platí obecně o všech nepotřebných argumentech, jsou-li jasné)
+
+# opět se podíváme jen na sloupce, které nás zajímají
+nasyceni |> 
+  select(obj_id,
+         datum,
+         cas)
+
+# poznamenejme, že kdybychom chtěli extrahovat celé datum z třídy značené jako <dttm> rovnou, existuje způsob přes obecnější funkci as_date(), která svým názvem přopomíná základní R funkci as.Date()
+nasyceni <- nasyceni |> 
+  mutate(datum2 = as_date(dt))
+
+nasyceni |> 
+  select(obj_id,
+         datum:datum2)
+```
+
+Poznamenejme ještě, že kromě funkce `as_date()`, `lubridate` rozlišuje rovněž funkci `as_datetime()`.
+
+## Zaokrouhlování
+
+Podobně jako u čísel i zde je možné zaokrouhlovat, což se v naší praxi bude týkat hlavně datumů. Existuhí zde tedy funkce jako `floor_date()`, `round_date()` a `ceiling_date()`. Jistě někdy budeme potřebovat získat datum začátku nebo konce měsíce. Demonstrujme.
+
+```{r}
+#| label: zaokrouhlovani
+# zaokrouhleme naše první datum na první den v měsíci a pak na poslední den v měsíci
+nasyceni <- nasyceni |> 
+  mutate(zacatek = floor_date(datum,
+                              "month"), # musíme zadat časovou jednotku
+         konec = ceiling_date(datum,
+                              "month"))
+
+# prohlédneme
+# a všimneme si, že funkce ceiling_date() ve skutečnosti zaokrouhluje na začátek následujícího měsíce
+# v následující části si ukážeme, jak tento problém řešit
+nasyceni |> 
+  select(obj_id,
+         datum,
+         zacatek,
+         konec)
+```
+
+## Časová rozmezí
+
+S objekty typu datum a datum a čas lze provádět i jednoduchou algebru jako je přičítání (odečítání) a násobení (dělení). K tomu potřebujeme pochopit, co jsou *trvání* (ve vteřinách), *období* (lidem přirozenější) a *intervaly* (s daným dolním a horním limitem).
+
+```{r}
+#| label: rozmezi
+# řekněme, že nás bude zajímat, jak stará je Univerzita Karlova
+uk_age <- today() - ymd(13480407)
+
+# výsledek se ukazuje ve dnech
+uk_age
+
+# trvání jsou uváděna ve vteřinách s přibližnou jednotkou, které lidé běžně rozumí více, v závorce
+uk_age |> 
+  as.duration()
+
+# snad kromě měsíců, u kterých je těžké určit jejich trvání ve vteřinách kvůli různým délkám, má každá časová jednotka (největší rok) svoji funkci pro určení trvání, jako je např. dyears()
+dyears(700)
+
+# jak bylo řečeno, s trváními lze již operovat ve smyslu jisté algebry
+# kolik asi let bude trvat do 700. výročí UK?
+dyears(700) - as.duration(uk_age)
+
+# což dopomáhá i k získávání nových chětných datumů
+today() + ddays(1)
+
+today() - dyears(1)
+
+# trvání jsou citlivá na časové zóny, takže je někdy lepší se zaměřit se na období
+# časová období poznáme podle toho, že čísla časových jednotek sjou následována patřičnou zkratkou
+# funkce, které je konstruují mají názvy také v množných číslech, ale nemají prefix 'd'
+days(1)
+
+# zde také fungují výpočetní operace, a tak se můžeme vrátit k příkladu se zaokrouhlováním a odečíst si od začátku následujícího měsíce jeden den
+nasyceni <- nasyceni |> 
+  mutate(konec = ceiling_date(datum,
+                              "month") - days(1))
+
+nasyceni |> 
+  select(obj_id,
+         datum,
+         zacatek,
+         konec)
+
+# chceme-li se dostat např. k přesnému podílu dvou období, je vhodnější použít intervaly
+# ve smyslu obecných období máme např. rok definovaný jako jednotku o 365,25 dnech (kvůli přestumným rokům)
+# intervalem s operátorem %--% dáváme však na vědomí, který rok nás zajímá
+(ymd(20240101) %--% ymd(20241231)) / days(1)
+```
+
+## Časové zóny
+
+Přestože jsme více zvyklí na uvádění zkratek časových zón, doporučují se k jejich určování[^3] tzv. Olsonova jména, která se skládají z názvu kontinentu (příp. oceánu) a města na tomto kontinentu. Tím je zaručeno přesnější určování a vyhýbání se problémům s tzv. *daylight saving time* (DST), jehož používání se mohlo v historii různě měnit.
+
+[^3]: Např. argumentem `tz` v různých funkcích souvisejících s časem.
+
+Některé časové zóny dokonce zkratkou určit nelze a používá se u nich u nich tzv. ofset od UTC.
+
+Ukažme, že existují i užitečné funkce `with_tz()` a `force_tz()`, z nichž každá má svůj význam. První předpokládá, že jsme s okamžikem v čase správně, jen nám ukáže čas v jiné časové zóně. Druhá předpokládá, že náš okamžik v čase byl špatně interpretován a že potřebujeme opravit jen časovou zónu.
+
+```{r}
+#| label: casove-zony
+# funkce now() si půjčuje časovou zónu z operačního systému
+# kolik je právě teď v Tokiu?
+# raději ještě ověříme jméno pásma
+OlsonNames() |> 
+  str_subset("Tok[iy]o") # používáme regulární výraz
+
+now() |> 
+  with_tz("Asia/Tokyo")
+
+# dále řekněme, že jsme si všimli, že časová zóna uvedená ve sloupci dt je nesprávná (UTC) a potřebujeme se tak dostat do naší časové zóny
+nasyceni |> 
+  slice(1) |> # funkce typu slice() jsou určeny výběru řádků podle jejich idexů (jsou citlivé na grupování)
+  pull(dt)
+
+nasyceni <- nasyceni |> 
+  mutate(dt2 = force_tz(dt,
+                        "Europe/Prague"))
+
+nasyceni |> 
+  slice(1) |> 
+  pull(dt2)
+```
+
+## Speciální konstanty
+
+S některými důležitými konstantami jsme se již seznámili. Záme již `NA` (pro chybějící hodnoty) a už i víme, jak se na chybějící hodnoty dotazujeme. Dále jsme si v jednom učebním textu ukázali konstantu `pi`. Trochu jsme se dotkli i funkce `exp()`, do které když napíšeme číslo 1, dostaneme Eulerovo číslo, tedy základ přirozeného logaritmu.
+
+V klimatologii a dalších vědách zabývajících se extrémy se však setkáme i s zv. Eulerovou konstantou. Ta je sice jasně definovaná a mohli bychom si pro ni napsat i funkci, ale nejpohodlnější způsob jejího zisku je prostřednictvím funkce `digamma()`. Eulerova konstanta se totiž rovná hodnotě `-digamma(1)`.
+
+Zajímavá je hodnota `NaN`, která se liší od `NA`. V angličtině znamená její váznam *not a number* a je např výsledkem dělení nuly nulou. Existuje i funkce, kterou se snažíme takové hodnoty najít.
+
+```{r}
+#| label: nan
+# mějme např. následující vektor obsahující nulu a pak jej zkusme dělit nulou
+vek1 <- -5:5
+
+# samozřejmě je zde využita recyklace
+vek1 / 0
+
+# lze se tedy ptát, který prvek vektoru je roven NaN
+which(is.nan(vek1 / 0))
+
+# ale funkguje i funkce is.na()
+which(is.na(vek1 / 0))
+```
+
+V předchozím příkladu jsme si také mohli všimnout, že existují nějaké hodnoty `-Inf` a `Inf`. Ty souvisejí s nekonečnem a zde zřejmě vznikly jako limity. Jsou to ale skutečné hodnoty, které lze klasicky porovnávat.
+
+```{r}
+#| label: nekonecna
+vek1 < Inf
+
+vek1 < -Inf
+```
+
+## Propojování tabulek (tzv. joining)
+
+Podobně jako v MS Excel, lze i v `R` propojovat tabulky na základě jednoho nebo více společných sloupců, které jednoznačně propojení definují. Toto počínání je velmi typické při práci s databázemi. V `R` existuje několik druhů tzv. *joinů*, ale nejvýznamnější jsou zřejmě tzv. *mutating joins*, tj. ty, které do tabulek přidávají další sloupce. Museli jsme si všimnout, že nám jaksi chybí některé důležité informace o ukazatelích v naší tabulce s časovými řadami. Přidejme si tedy daší užitečné sloupce za pomoci tabulky v metadatech souvisejících s ukazateli.
+
+```{r}
+#| label: joining
+# napřed se musíme odkázat na potřebná metadata
+# ale můžeme se znovu odkázat i na časové řady
+meta2 <- open_dataset("metadata/wq_water_metadata2")
+
+rady <- open_dataset("data/wq_water_data")
+
+# demonstrujme připojení metadat zleva
+# a rovnou také hledání řádků podle popisu ukazatele
+rady2 <- rady |> 
+  filter(year == 2008) |> 
+  left_join(meta2, # používáme left_join(), protože máme delší tabulku nalevo
+            join_by(tscon_id)) |> # funkce join_by() podle jakých klíčů (sloupců) chceme tabulky propojit (toto je případ se stejnými názvy, ale tak to nemusí být)
+  filter(str_detect(tscon_ds, "^nasycení")) |> 
+  collect()
+
+# prohlédneme výsledek
+rady
+
+# i zde jde vlastně o databázové dotazy předtím, než se data načtou do RAM
+# dotaz si lze zobrazit funkcí show_query()
+rady |> 
+  filter(year == 2008) |> 
+  left_join(meta2,
+            join_by(tscon_id)) |> 
+  filter(str_detect(tscon_ds, "^nasycení")) |> 
+  show_query()
+```
+
+Důležité je rozlišovat mezi různými typy *mutating joinů*. Další takové funkce jsou `right_join()`, `inner_join()` a `full_join()`. Každá z nich má význam podle toho, co chceme dělat s tzv. neporovnatelnými hodnotami (zahodit?, ponechat místo toho `NA`?).
+
+Velmi zajímavý je pomocník `join_by()`. Ten totiž umožňuje se zaměřit se nejen na rovnosti klíčů, ale umožňuje i jejich další vzathy, jako jsou např. přesahy apod. Prostudujte nápovědu této funkce a zjistěte, co všechni umožňuje.
+
+Dodejme, že podrobněji se propojováním tabulek zabývá kap. 19 knihy @wickham2023.
