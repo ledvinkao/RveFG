@@ -1,0 +1,154 @@
+---
+title: "Interentové stránky jako zdroj dat; základy funkcionálního programování"
+author: "Ondřej Ledvinka"
+format: html
+embed-resources: true
+toc: true
+editor: visual
+date: 2025-12-02
+date-modified: '`r Sys.Date()`'
+bibliography: references_RveFG.bib
+csl: geografie-sbornik-cgs.csl
+theme: darkly
+lang: cs
+engine: knit
+---
+
+## Prerekvizity
+
+V následujícím se předpokládá, že již máme založený R projekt ze začátku kurzu. To znamená, že máme možnost využívat relativní cesty k souborům a jiné výhody práce s R projektem. Dále se předpokládá, že máme kvalitní připojení k internetu, jelikož se může stát, že budeme instalovat chybějící balíčky. Internetové připojení je nutností při získávání dat z internetu.
+
+Pokud možno, budeme také pracovat s nejnovějšími verzemi `R` (v současnosti `r R.Version()$version.string` – `r R.Version()$nickname` z `r paste(R.Version()$year, R.Version()$month, R.Version()$day, sep = "-")`) a RStudio (v současnosti RStudio 2025.09.2+418 "Cucumberleaf Sunflower" z 2025-10-20).
+
+## Internet jako zdroj dat
+
+Stane se, že na internetu se nacházejí data, která potřebujeme, ale nejsou standardně nabízena v běžném souborovém formátu, jako je CSV apod. Je běžným zvykem data a webové stránky s nimi chránit a současné metody tvorby webových stránek nám život úplně neusnadňují. Když není zbytí, musíme se někdy uchýlit k tzv. *web scragpingu*, který ale bývá často považován za jakousi pololegální činnost. Existují `R` balíčky, které nám taková data pomáhají stahovat, slušně se serveru ptají, zda je stahování v pořádku a umožnují napodobovat lidské sezení u webovýh stránek.
+
+Nejznámějším balíčkem určeným ke stahování dat z webových stránek je balíček `rvest` a v knize @wickham2023 je mu věnována kap. 24. V kostce jde o uložení webové stránky do objketu a separování prvků na ní podle znaků jazyků HTML, CSS apod. Takto si lze v `R` vytvořit klasickou tabulku, kterou pak již můžeme zpracovávat, jak jsme zvyklí. Někdy trvá docela dlouho, než přijdeme na nějaký systém, a to včetně nalezení správného odkazu.
+
+Uveďme několik ukázek.
+
+```{r}
+#| label: web-scraping1
+# platforma Google Earth Engine uvádí ke kolekcím obrázků i metadata
+# ta jsou často již ve formě tabulky, ale webové
+# načteme nejprve potřebné balíčky
+xfun::pkg_attach2("tidyverse",
+                  "rvest")
+
+# řekněme, že budeme chtít získat tabulku která se nachází na odkaze https://developers.google.com/earth-engine/datasets/catalog/ESA_WorldCover_v100
+url <- "https://developers.google.com/earth-engine/datasets/catalog/ESA_WorldCover_v100"
+
+tabs <- url |> 
+  read_html() |> # načítáme stránku z url
+  html_table() # separujeme tabulky
+
+# jde o seznam (list) se dvěma prvky, přičemž druhý je tabulka, kterou potřebujeme
+# takže extrahujeme dvojitými hranatými závorkami
+tab <- tabs[[2]]
+
+# prohlédneme
+tab
+
+# ukažme ještě složitější případ a jak si např. skládat odkazy na soubory
+# demonstrujme na zveřejněných hydrologických datech z Polska
+url2 <- "https://danepubliczne.imgw.pl/data/arch/ost_hydro/"
+
+tab2 <- tibble(path1 = str_c(url2,
+                             url2 |> 
+                               read_html() |> 
+                               html_elements("a") |> # odkazy často hledáme u HTML znaku 'a'
+                               html_text() |> # sebereme odkazy jako text
+                               str_subset("^[0-9]"))) |> # regulárním výrazem se zaměříme jen na řetězce, které začínají číslem
+  mutate(path_final = map(path1, # funkci map() vysvětlíme později
+                          \(x) str_c(x,
+                                     x |> 
+                                       read_html() |> 
+                                       html_elements("a") |> 
+                                       html_text() |> 
+                                       str_subset("\\.zip$")))) |> # regulární výrazem se zaměříme jen na řetězce končící na '.zip$'; dvě zpětná lomítka jsou escape
+  unnest(path_final) |> # zahnízděná data v seznamu odhnízdíme
+  select(-path1)
+
+# prohlédneme
+tab2
+
+# teď bychom mohli stáhnout všechny ZIP soubory pomocí funkce download.file() atd.
+```
+
+## Hierarchická data
+
+Hierarchická data jsou na internetu velmi rozšířená. Dosti často jde o tzv. JSON soubory, které jsou plné složených závorek a hlupoko zahnízděných dat. V knize @wickham2023 je jim věnována kap. 23. Pokud jde např. o JSON soubory s otevřenými daty ČHMÚ, osvědčují se funkce balíčku `jsonlite()`.
+
+Ukažme si např. práci s metadaty vodoměrných stanic.
+
+```{r}
+#| label: jsonlite
+# protože budeme používat jen jednu funkci balíčku jsonlite, není třeba tento balíček načítat celý
+
+# nejprve url souboru
+url3 <- "https://opendata.chmi.cz/hydrology/historical/metadata/meta1.json"
+
+# používáme hodně operátory $, protože se potřebujeme dostat hluboko v seznamu
+# nejprve se dostáváme k matici s daty, kterou konvertujeme na tibble (přes data frame)
+# poté nastavujeme hlavičku, kterou si ale musíme také napřed nějak zpracovat
+meta <- jsonlite::fromJSON(url3)$data$data$values |> 
+  as.data.frame() |> 
+  as_tibble() |> 
+  set_names(jsonlite::fromJSON(url3)$data$data$header |> # funkce set_names() pochází z balíčku purrr
+              str_split(",") |> unlist()) |> 
+  janitor::clean_names() # tady už jen uklízíme názvy sloupců
+
+# klidně zkoušejte kód pouštět postupně, ať víte, co se za jednotlivými pipy děje
+
+# prohlédneme
+meta
+```
+
+## Funkcionální programování
+
+Jak nahoře aplikovaná funkce `map()`, tak poté aplikovaná funkce `set_names()` patří do balíčku `purrr`, který se v *tidyverse* zaměřuje na funkcionální programování. Základem funkcionálního programování je tzv. mapping vektorizované funkce. Jde o aplikaci jakýchsi *for cyklů*, ale mnohem efektivnější.
+
+Funkce `map()` zde má hned několik podob, a to podle toho, co vrací, nebo přes kolik argumentů mapujeme. Standardně funkce `map()` vrací seznam a pokud je uzavřena ve funkci `mutate()` vrátí nám tento seznam do sloupce nějaké tabulky. Někdy jsou ale splněny podmínky pro zjednodušený objekt, jako je vektor, a poto existují varianty `map_vec()`, `map_chr()`, `map_int()`, `map_dbl()` apod. Podle počtu argumenů pak rozlišujeme funkce `map()`, `map2()` nebo `pmap()`.
+
+Kromě funkce `map()` je potřeba rozlišovat také funkci `walk()`, která je určena pro tzv. vedlejší efekty, jako je ukládání souborů nebo kreslení grafů s dynamickými změnami. U funkce `walk()` pak také rozeznáváme funkce `walk2()`, `pwalk()` apod.
+
+Funkce mapujeme přes vektory a seznamy nebo jejich kombinace. Mapované funkce mohou být pojmenované (tj. existují v základním `R` nebo v nějakém balíčku) nebo nepojmenované (anonymní[^1]). A jak již víme z dřívějška, mezi těmito typy funkcí je potřeba odlišovat – pojmenovaná funkce, pokud už jí nebudeme upřesňovat žádné další argumenty, nepotřebuje končit prázdnými závorkami, anonymní funkce naopak končí závorkami. Anonymní funkce v současném `R` můžeme uvozovat zpětným lomítkem nasledovaným oblými závorkami, ve kterých říkáme, jak budeme označovat zastupující proměnné. Anonymní funkce mohou samozřejmě být složené, a to i s pipy.
+
+[^1]: Někdy se také těmto funkcím říká *lambda*.
+
+I když je pro to možné použít pouze funkci `mutate()`, demonstrujme vlastnosti funkce `map()` např. u slepování textových řetězců s názvem profilu s názvem toku.
+
+```{r}
+#| label: funkcionalni-programovani
+# zde rovnou ukážeme i kombinaci s funkcí mutate()
+meta <- meta |> 
+  mutate(spojeno = map2(station_name,
+                        stream_name,
+                        \(x, y) str_c(x, y, sep= "_")))
+
+# prohlédneme zájmovou část tabulky
+meta |> 
+  select(obj_id:stream_name,
+         spojeno)
+
+# nový sloupec je seznam, který můžeme tzv. odhnízdit funkcí unnest()
+meta |> 
+  select(obj_id:stream_name,
+         spojeno) |> 
+  unnest(spojeno) # současné verze R chtějí již vědět, který sloupec chceme odhnízdit
+
+# kdyby v seznamu byla tabulka s více řádky, řádky nalevo by se zduplikovaly
+
+# k cíli s nezahnízděným sloupcem se můžeme dostat i trochu jinak
+meta <- meta |> 
+  mutate(spojeno = map2_chr(station_name,
+                            stream_name,
+                            \(x, y) str_c(x, y, sep= "_")))
+
+meta |> 
+  select(obj_id:stream_name,
+         spojeno)
+```
+
+Funkcionální programování je v knize @wickham2023 obsaženo v kap. 26. Experimentální funkce balíčku `purrr` dovolují už i paralelizaci mapování – viz funkci `in_parallel()`. Je k tomu potřeba mít ještě nainstalovaný balíček `mirai`.
