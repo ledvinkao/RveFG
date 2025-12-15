@@ -1,0 +1,326 @@
+---
+title: "Vektorová a rastrová geodata v R, jejich interakce a vykreslování"
+author: "Ondřej Ledvinka"
+format: html
+embed-resources: true
+toc: true
+editor: visual
+date: 2025-12-09
+date-modified: '`r Sys.Date()`'
+bibliography: references_RveFG.bib
+csl: geografie-sbornik-cgs.csl
+theme: darkly
+lang: cs
+engine: knit
+---
+
+## Prerekvizity
+
+V následujícím se předpokládá, že již máme založený R projekt ze začátku kurzu. To znamená, že máme možnost využívat relativní cesty k souborům a jiné výhody práce s R projektem. Dále se předpokládá, že máme kvalitní připojení k internetu, jelikož se může stát, že budeme instalovat chybějící balíčky. Internetové připojení je nutností při získávání geodat z internetu, což si také v některých případech předvedeme.
+
+Pokud možno, budeme také pracovat s nejnovějšími verzemi `R` (v současnosti `r R.Version()$version.string` – `r R.Version()$nickname` z `r paste(R.Version()$year, R.Version()$month, R.Version()$day, sep = "-")`) a RStudio (v současnosti RStudio 2025.09.2+418 "Cucumberleaf Sunflower" z 2025-10-20).
+
+## Vektorová geodata
+
+Vektorová geodata v `R` lze ve stručně charakterizovat jako tabulky obohacené o sloupec, ve kterém máme navíc informaci o geometrii, ke které se ostatní atributy (v ostatních sloupcích – polích) váží. Nejvíce budeme pracovat s tzv. *simple feature collection* (`sf`), kterou lze ale rozdělit do několika prvků. Samozřejmostí je atributová tabulka nebo jen jedna řádka s atributy (či dokonce jedno pole s jedinou hodnotou), ale zvláštností zde je sloupec s geometrií, tzv. *simple feature column* (`sfc`). Tento sloupec se skládá z jedné nebo více *simple feature geometry* (`sfg`). Podle těchto tříd pak lze aplikovat funkce nejdůležitějšího `R` balíčku `sf`, které tyto třídy akceptují. Kromě toho se můžeme zabývat také vztahy mezi atributy a geometrií (*attributes-geometry relationships*, `agr`), ale do toho se pouštět nebudeme[^1].
+
+[^1]: Občas také proto, že tyto vztahy ignorujeme, uvidíme při aplikaci některých funkcí varování, ale to nám vadit nebude.
+
+Pokud jde o geometrii, rozlišujeme zde tzv. *velkou sedmičku* – (MULTI)POINTS, (MULTI)LINESTRING, (MULTI)POLYGON a GEOMETRYCOLLECTION. Velice zřídka se setkáme s dalšími, vzácnějšími, typy podporovaných geometrií, přičemž kompletní výčet uvádí kniha @pebesma2023. Tam se také dočteme, že se na typy geometrie lze doptávat[^2] nebo dokonce můžeme mezi nimi "přepínat", pokud to logika věci dovoluje (viz funkci `st_cast()`). S geometrií lze pracovat i tak, že lze přičítat či násobit konstanty (nebo třeba i matice).
+
+[^2]: Jde o funkci `st_geometry_type()`. Dokonce existuje funkce na tázání se na prázdnou geometrii, tj. `st_is_empty()`.
+
+Celý *tidyverse* jsme se vlastně učili proto, že právě jeho přístupy jsou velmi dobře podporovány při práci s třídou `sf`, a to včetně pipe operátoru, takže nám zde přibývají funkce, které umí pracovat se speciálními typy tabulek s geometrií. Výhodou je, že `sf` třídu lze funkcí `as_tibble()` převádět na tabulky a naopak z tabulky můžeme objekt konvertovat na třídu `sf` pomocí funkcí `st_sf()` (pokud v podkladové tabulce již existuje sloupec s geometrií, ačkoliv jaksi schovaný) nebo funkcí `st_as_sf()` (pokud v tabulce neexistuje žádný sloupec s geometrií, ale přesto existuje ve sloupcích informace z níž si geometrii můžeme vytvořit). Funkce `st_as_sf()` je univerzálnější, podporuje i jiné třídy, než jsou ty tabulkové. Podobně existují funkce vytvářející třídy `sfc` či `sfg`.
+
+Ukažme si tedy nějaké příklady ukazující tvorby třídy `sfg` a tvorbu třídy `sf`. Dále ukažme, jak lze `sf` převádět na tabulku a tu opět převádět na `sf`.
+
+```{r}
+#| label: tvoba-sf
+# nejprve musíme načíst potřebné balíčky
+# rovnou načteme i balíček pro práci s rastrovými geodaty a další balíček pro případnou kresbu situace
+xfun::pkg_attach2("tidyverse",
+                  "RCzechia", # důležitý balíček pro vektory sf se načítá automaticky s tímto
+                  "terra", # balíček pro rastry
+                  "tmap") # pro kreslení map
+
+# vytvořme bod z vektoru
+# nejpre zadáváme souřadnici související se zeměpisnou délkou
+# pak teprve souřadnici související se zeměpisnou šířkou
+bod <- st_point(c(15, 50))
+
+# co teď máme za třídu?
+bod |> 
+  class()
+
+# jak objekt vypadá po vytištění do konzole?
+bod
+
+# převeďme na třídu sfc, čímž se připravíme tvorbu sf, protože již budeme mít připravený sloupec s geometrií
+bod <- bod |> 
+  st_sfc(crs = 4326) # zde již můžeme definovat souřadnicový referenční systém (crs)
+
+# číselný kód reprezentuje tzv. EPSG autoritu (zde tedy jde o crs, který známe z GPS, zvaný stručně WGS 84)
+
+# podíváme se, co tu máme teď
+bod |> 
+  class()
+
+# tímto se v konzoli objevuje již jakási hlavička
+bod
+
+# teď ještě převeďme na třídu sf
+# nakonec ještě raději přejmenujeme sloupec s geometrií na něco rozumějšího
+bod <- bod |> 
+  st_sf() |> 
+  st_set_geometry("geometry") # tato funkce tady funguje podobně jako set_names(), ale umí toho víc
+
+bod |> 
+  class()
+
+bod
+
+# protože tohle už je objekt třídy sf, lze přidávat atributy, a to např. funkcí mutate()
+bod <- bod |> 
+  mutate(nm = "Kouřim")
+
+bod
+
+# změňme vykreslovací mód balíčku tmap na interaktivní (tj. na "view")
+tmap_mode("view")
+
+# a nakresleme bod
+# funkce balíčku tmap staví na podobné logice jako funkce balíčku ggplot2
+# takže pro vrstvení používáme operátor +
+tm_shape(bod) + # nejprve definujeme novou vrstvu
+  tm_symbols() # pak způsob kreslení
+
+# demonstrujme konverzi třídy sf na třídu tibble
+bod <- bod |> 
+  as_tibble()
+
+# ztratila se hlavička, ale geometrický sloupec je stále přítomen
+bod
+
+# proto můžeme aplikovat funkci st_sf() při konverzi zpět na třídu sf
+bod <- bod |> 
+  st_sf()
+
+# teď na tom dokonce budeme ještě lépe, protože tabulka je třídy tibble
+bod
+
+# třídy sf se ale můžeme zbavit i jinak, prostřednictvím funkce st_drop_geometry()
+# objekt nepřepisujeme, jen demonstrujeme
+bod |> 
+  st_drop_geometry()
+```
+
+Lze samozřejmě konstruovat složitější geometrické útvary, kde namísto vektorů využíváme matic. Existují i jiné balíčky, usnadňující konstrukci (viz např. `sfheaders` nebo `mapedit`, který akceptuje i trvorbu i editaci interaktivním způsobem). Často ale budeme mít k dispozici data se souřadnicemi bodů nebo dokonce již hotová vektorová geodata, která bude postačovat jen načíst. Ukažme si tedy tvrobu bodové vektorové vrstvy ze souřadnic a následně některé možnosti načítání hotových vektorových godat.
+
+```{r}
+#| label: body-ze-souradnic-a-nacitani
+# mějme např naši metadatovou tabulku se stanicemi povrchových vod měřícími množství
+# tabulku již načíst z JSON souboru umíme
+url <- "https://opendata.chmi.cz/hydrology/historical/metadata/meta1.json"
+
+meta <- jsonlite::fromJSON(url)
+
+meta <- meta$data$data$values |> 
+  as.data.frame() |> 
+  as_tibble() |> 
+  set_names(meta$data$data$header |> 
+              str_split(",") |> 
+              unlist()) |> 
+  janitor::clean_names()
+
+# souřadnice jsou teď uvedeny jako textové řetězce
+# budeme potřebovat aplikovat funkci st_as_sf(), která ale chce souřadnice jako čísla
+meta <- meta |> 
+  mutate(across(starts_with("geogr"),
+                as.numeric)) |> 
+  st_as_sf(coords = c("geogr2", "geogr1"), # tady pozor na záměnu pořadí souřadnic
+           crs = 4326)
+
+# protože se chceme zaměřit na geometrický sloupec, raději vybereme jen některé, abychom geometrii viděli
+# geometrický sloupec zůstává, i když jsme ho funkcí select() nevybrali
+# jedná se o tzv. 'sticky geometry', které se zbavujeme jinak (a my už víme, co pomůže)
+meta |> 
+  select(dbc:stream_name)
+
+# klidně i vykreslíme
+tm_shape(meta) + 
+  tm_symbols()
+
+# stáhněme si k tomu např. polygony krajů Česka
+kraje <- kraje() # funkce pochází z balíčku RCzechia
+
+kraje
+
+# takto můžeme kreslit dvě vrstvy
+tm_shape(kraje) + 
+  tm_borders() + 
+  tm_shape(meta) + # další vrstvu vždy definujeme novým tm_shape()
+  tm_symbols()
+```
+
+V balíčku `sf` také existuje funkce, která vektorová geodata načítá ze souboru. Jmenuje se `read_sf()` a dokáže načítat z formátů takových, které umožnuje knihovna GDAL. Jelikož tato knihovna umí načítat soubory i bez rozbalení souboru z archivu, nebo rovnou z internetového odkazu, může se povést, že soubory ani nepotřebujeme stahovat, ani robalovat před načtením. Velmi často jsou vektorová geodata také publikována prostřednictvím webových služeb, zde při načítání pomáhají balíčky `arcgislayers` nebo `ows4R`. Bohužel není čas toto studovat tak detailně.
+
+Mezi vektorovými vrstvami lze studovat vztahy a na základě těchto vztahů provádět výběry. Nejdůležitější funkcí zde je asi `st_intersects()`, která je standardně nastavena v dalšíh funkcích, které staví na výběrech, jako je funkce `st_join()` určená k propojování atributů na bázi prostorových vztahů.
+
+```{r}
+#| label: vektorova_geodata-vztahy
+# ukažme si, jak funkci st_intersects() ani nemusíme znát a i tak pomocí ní vybrat body uvnitř nějakého polygonu
+# řekněme, že budeme chtít vybrat body jen na území Prahy
+# nejprve se na prahu ale budeme muset zaměřit
+praha <- kraje |> 
+  filter(NAZ_CZNUTS3 == "Hlavní město Praha")
+
+# musíme zajistit stejné crs, můžeme transformovat a dědit z jiné vrstvy
+stanice <- meta |> 
+  st_transform(st_crs(praha)) # toto je zde ukázáno jen přo případy, kdybychom to potřebovali; zde máme v původních datech již podmínku stejných crs splněnu
+
+stanice_praha <- stanice[praha,]
+
+tm_shape(stanice_praha) + 
+  tm_symbols()
+
+# když nastavíme namísto standardně vybrané funkce st_intersects() např. funkci st_disjoint(), dosáhneme pravého opaku při výběru
+stanice_nepraha <- stanice[praha, op = st_disjoint]
+
+tm_shape(stanice_nepraha) + 
+  tm_symbols()
+
+# podobné výsledky můžeme získat i pomocí funkcí str_crop() a st_intersection()
+stanice_praha2 <- stanice |> 
+  st_crop(praha) |> # touto funkcí se dostáváme na box daný souřadnicemi v hlavičce ohraničujícího polygonu
+  st_intersection(praha) # tato funkce ořezává pak přesněji podle tvaru polygonu
+
+tm_shape(stanice_praha2) + 
+  tm_symbols()
+
+# výsledek v tomto případě může vypadat stejně, ale zkuste si výsledky porovnat třeba při výběru a ořezávání liniových objektů
+
+# funkce st_join() funguje podobně jako připojování tabulek podle klíčových sloupců, jenom namísto klíčů pracuje na bázi prostorových vztahů
+# takto např. můžeme zjistit, kolik vodoměrných stanic máme v jednotlivých krajích
+stanice |> 
+  st_join(kraje |> 
+            select(NAZ_CZNUTS3)) |> 
+  st_drop_geometry() |> 
+  count(NAZ_CZNUTS3)
+
+# jak vidíme, existuje i skupina stanic, kterým nebylo možné přiřadit ani jeden kraj
+```
+
+## Rastrová geodata
+
+Rastrová geodata jsou většinou moc velká, a proto u nich existují strategie načítání jenom toho, co pro práci v `R` zrovna potřebujeme. Proto také od začátku kurzu není doporučováno ukládát do a načítat ze souborů typu .RData. Když načteme rastrová geodata, v naprosté většině se Globálním prostředí ukáže, že daný objekt reprezentuje pouze formální třídu. Při tisku do konzole vidíme často jen určitou hlavičku s maximy a minimy hodnot v jednotlivých vrstvách. Více hodnot se z rastrových souborů načítá až tehdy, potřebujeme-li nad nimi provádět výpočty, nebo třeba jen kreslit. Zásadní při zpracování rastrových geodat v `R` je balíček `terra` [@hijmans2025]. Pro načítání dat ze souborů používáme funkci `rast()`. Ukažme si, jak načíst rastrová data ze souborů na internetu, využijme k tomu např. scénářová rastrová geodata vytvořená českými klimatology.
+
+```{r}
+#| label: rastrova-geodata-nacitani
+# vybereme pouze teplotu vzduchu a pouze scénář SSP2-4.5
+# víme, že na odkaze https://www.perun-klima.cz/scenare/data/SSP245_T_year_asc.zip najdeme ZIP soubor se čtyřmi rastrovými soubory (v ASC formátu)
+# názvy souborů můžeme zjistit po stažení a nahlédnutí do ZIP souboru
+# využijeme tzv. řetízky a načteme si soubory programaticky
+r1 <- rast("/vsizip/vsicurl/https://www.perun-klima.cz/scenare/data/SSP245_T_year_asc.zip/SSP245_T_2021-2040_year.asc")
+
+r2 <- rast("/vsizip/vsicurl/https://www.perun-klima.cz/scenare/data/SSP245_T_year_asc.zip/SSP245_T_2041-2060_year.asc")
+
+r3 <- rast("/vsizip/vsicurl/https://www.perun-klima.cz/scenare/data/SSP245_T_year_asc.zip/SSP245_T_2061-2080_year.asc")
+
+r4 <- rast("/vsizip/vsicurl/https://www.perun-klima.cz/scenare/data/SSP245_T_year_asc.zip/SSP245_T_2081-2100_year.asc")
+
+# funkcí c() můžeme vrstvy spojit, jako bychom tvořili vektor nebo seznam
+r <- c(r1, r2, r3, r4)
+
+# podíváme se jak vypadá hlavička objektu při tisku do konzole
+r
+
+# chybí zde informace o crs, ale my víme, že je to crs s EPSG kódem 32633
+# terra potřebuje pro definici crs znát i autoritu
+# zde tedy namísto funkce st_crs() existuje funkce crs()
+crs(r) <- "EPSG:32633" # akceptovaná jsou i malá písmena
+
+r
+
+# v balíčku tmap existují i výborné funkce pro kreslení rastrových geodat
+# nyní však raději přepneme na kreslení statických map
+tmap_mode("plot")
+
+# při výběru vrstvy pro kreslení můžeme použít dvojité hranaté závorky
+tm_shape(r[[1]]) + # vybereme průměry za období 2021-2040
+  tm_raster(col.scale = tm_scale_continuous(values = "brewer.reds"), # vybíráme lepší barevnou paletu
+            col.legend = tm_legend(reverse = T)) # obracíme pořadí barev v legendě
+```
+
+Funkce `rast()` toho umí mnohem více a vyplatí se prostudovat její dokumentaci. K ukládání rastrových geodat do souboru naopak slouží funkce `writeRaster()` nebo `writeCDF()`, to podle toho, jestli chceme, aby výsledkem byl NetCDF soubor (s příponou .nc; mj. velmi oblíbený v klimatologii)[^3], či jiný formát, jako je např. GeoTIFF (s příponou .tif). Vypočítejme např. průměrnou teplotu vzduchu pro celé období 2021--2100 a uložme výsledek do GeoTIFF souboru.
+
+[^3]: Aby funkce pracovala správně, potřebujeme mít nainstalovaný balíček `ncdf4`. Když nebude nainstalovaný, objeví se o tom hláška.
+
+```{r}
+#| label: rastr-vazeny-prumer-a-ulozeni
+# správně bychom měli počítat vážené průměry a vahami by měly počty dnů v jednotlivých obdobích
+# váhy již získat umíme, zaměstnejme např. intervaly
+vahy <- c(ymd(20210101) %--% ymd(20410101),
+          ymd(20410101) %--% ymd(20610101),
+          ymd(20610101) %--% ymd(20810101),
+          ymd(20810101) %--% ymd(21010101)) / days(1)
+
+vahy
+
+# nyní můžeme váhy využít pro výpočet váženého průměru rastrových vrstev (počítá se napříč všemi vrstvami, tj. pro každou buňku dostaneme časový průměr)
+# k tomuto dobře poslouží funkce terra::weighted.mean()
+tavg <- weighted.mean(r, w = vahy) |> 
+  round(1) # zaokrouhlujeme, protože nemá smysl uvádět teplotu na více jak jedno desetinné místo
+
+# prohlédněme hlavičku
+# je zde skutečně už jenom jedna vrstva
+tavg
+
+# jména vrstev můžeme opravit funkcí terra::names()
+names(tavg) <- "tavg"
+
+# podobně existuje funkce terra::time() pro nastavování času u vrstev
+
+# zapišme do GeoTIFF souboru
+writeRaster(tavg,
+            "outputs/tavg.tif", # máme založenou složku outputs
+            overwrite = T) # jinak bychom při opakovaném uložení stejného souboru naráželi na existující soubor
+```
+
+## Interakce mezi rastrovými a vektorovými geodaty
+
+Rastry často vystupují v interakcích s vektorovými geodaty, např. se zajímáme jen o nějaké území dané polygonem. Podobně jako u vektorů zde máme funkci `crop()`. Namísto `st_intersection()` používáme funkci `mask()`, nebo rovnou zaměstnáme argument `mask` ve funkci `crop()`, pokud je vektorová vrstva, se kterou v obou funkcích pracujeme, totožná.
+
+```{r}
+#| label: crop-a-mask
+# řekněme, že se zajímáme jen o budoucí teplotu vzduchu na území Prahy
+tavg_praha <- crop(tavg,
+                   praha |> 
+                     st_transform(crs(tavg)), # musíme si dávat pozor na odlišné crs; současné verze terra by však již měly transformovat vektor na crs rastru automaticky s varováním
+                   mask = T)
+
+tm_shape(tavg_praha) + 
+  tm_raster(col.scale = tm_scale_continuous(values = "brewer.reds"),
+            col.legend = tm_legend(reverse = T))
+```
+
+Velmi častou interakcí mezi rastrem a vektorem je extrahování hodnot buněk rastru podle vektorové vrstvy. U bodů to není nutné, ale u čar a polygonů je vyžadována ještě funkce, kterou chceme hodnoty buněk agregovat. Velmi často je takovou funkcí `mean()`. Ukažme, jak můžeme extrahovat hodnoty rastru budoucí teploty vzduchu do polygonů jednotlivých krajů Česka.
+
+```{r}
+#| label: extrahovani-hodnot-rastru-do-vektoru
+# vrstvu krajů budeme potřebovat v crs rastru
+kraje_t <- kraje |> 
+  st_transform(crs(tavg)) |> 
+  select(NAZ_CZNUTS3) # ještě raději vybereme podstatný sloupec, aby ostatní nerušily prohlížení výsledných dat
+
+kraje_t <- extract(tavg,
+                   kraje_t,
+                   fun = mean,
+                   bind = T) |> # tento argument zaručí připojení nového sloupce k vektorové vrstvě, což je častý případ, který chceme
+  st_as_sf() |> # výsledkem je třída SpatVector, kterou chceme konvertovat na sf
+  as_tibble() |> # tady už jen chceme z obyčené data frame dostat tibble
+  st_sf() |> # převádíme zpátky na sf
+  mutate(tavg = round(tavg, 1)) # a zaokrouhlujeme přidané hodnoty s teplotou
+
+# prohlédneme
+kraje_t
+```
