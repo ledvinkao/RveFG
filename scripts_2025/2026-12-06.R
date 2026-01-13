@@ -255,11 +255,11 @@ swe_lmodel_signif_slope
 # co vše vrací funkce mmky1lag() zjistíme ze sekce Value její dokumentace
 ?mmky1lag
 
-# zajímáme se o Corrected Zc, new.P.value a třeba Sen's Slope (z výstupu vybereme indexy)
+# zajímáme se o Corrected Zc, new P.value a třeba Sen's Slope (z výstupu vybereme indexy)
 swe_mk <- swel_winters |> 
   reframe(stat = mmky1lag(val_num)[c(1, 2, 7)]) # funkci mmky1lag() stačí zadávat jako jediný argument jen časovou řadu hodnot, které samozřejmě musí být správně seřazeny dle chodu času
 
-# jednotlivé statisiky si můžeme rohodit do zvláštních sloupců
+# jednotlivé statisiky si můžeme rozhodit do zvláštních sloupců
 swe_mk <- swe_mk |> 
   group_by(nm) |> # tohle zajistí, že do následující funkce mutate() stačí zadat jen tři hodnoty, které indikují o jakou statistiku jde; vše se pak do dalších skupin vhodně zduplikuje
   mutate(nm2 = c("zc", "p.value", "sen")) |> 
@@ -325,7 +325,7 @@ lm_mod2 |>
   extract_fit_engine() |> # abychom si mohli zobrazit summary, jak jsme zvyklí, musíme napřed extrahovat
   summary()
 
-# ovšem kouzlo tidy modelování je v tzv. reamplingu, výběrech trénovacích (analytických, vyhodnocovacích) a testovacích podmnožin datasetů
+# ovšem kouzlo tidy modelování je v tzv. resamplingu, výběrech trénovacích (analytických, vyhodnocovacích) a testovacích podmnožin datasetů
 # silná je i náplň balíčku yardstick s velkým množstvím výkonnostních statistik
 # balíček workflowsets obsahuje funkce na porovnávání různých modelů (nebo stejných s jiným nastavením)
 
