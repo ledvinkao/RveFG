@@ -1,5 +1,5 @@
 ---
-title: "R ve fyzické geografii: Základy kreslení grafů ve smyslu ggplot2; logické vektory"
+title: "R ve fyzické geografii: Základy kreslení grafů ve smyslu ggplot2"
 author: 
     name: Ondřej Ledvinka
     email: "ledvinka@natur.cuni.cz"
