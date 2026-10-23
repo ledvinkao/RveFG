@@ -1,0 +1,179 @@
+---
+title: "R ve fyzické geografii: ggplot2, přednastavené motivy (témata) a panely (facety)"
+author: 
+    name: Ondřej Ledvinka
+    email: "ledvinka@natur.cuni.cz"
+format: html
+embed-resources: true
+toc: true
+editor: visual
+date: 2026-10-27
+date-modified: '`r Sys.Date()`'
+theme: darkly
+lang: cs
+engine: knitr
+---
+
+## Prerekvizity
+
+Jedná se o bonusový učební text, který zakládá na dotazech studentů týkajících výberu finálních motivů (*themes)* pro ggplot2 grafy. Rovnou také ukážeme, jak rychle získat tzv. facety (panely, podgrafy) grafů založené na kategorické proměnné. Text se opírá o několik zatím neznámých balíčků, z nichž některé ani nenajdeme na CRAN, ale pouze na vývojářské síti GitHub. Budeme tedy muset ukázat postup, jak instalovat balíčky z GitHub. Zaroveň se samozřejmě předpokládá, že pracujeme s nejnovějšími verzemi `R` a IDE RStudio. Samozřejmostí je rovněž kvalitní připojení k internetu, protože budeme instalovat nové balíčky.
+
+## Instalace balíčků z GitHub a načtení balíčků do prostředí pro další práci
+
+Jeden ze zajímavých balíčků přinášející vtipné motivy inspirované televizními seriály je balíček `ThemePark`. Ten ale nenalezneme na žádném zrcadle CRAN, nýbrž na GitHubu. Abychom mohli nainstalovat balíček z GitHubu, potřebujeme funkci `remotes::install_github()`. To znamená, že nejprve potřebujeme také balíček `remotes`, i když ho nebudeme načítat celý.
+
+```{r}
+#| label: balicky-z-github-a-nacteni-balicku
+#| message: false
+# předpokládejme, že balíček remotes již nainstalovaný máme
+# můžeme tedy využít funkci install_github()
+# na GitHub stránkách balíčku ThemePark se dozvídáme, jakou cestu máme funkci zadat
+remotes::install_github("MatthewBJane/ThemePark")
+
+# nyní načteme balíčky pro další práci
+# možná bude potřeba některé z nich instalovat z CRAN, tak zvolíme pkg_attach2()
+xfun::pkg_attach2(
+  "tidyverse",
+  "units",
+  "ggforce",
+  "ggthemes", # asi nejznámější balíček dodávající další funkce 'theme_'
+  "ThemePark" # balíček jsme právě nainstalovali
+)
+```
+
+## Práce s dalšími funkcemi 'theme\_'
+
+Předpokládejme, že naše dřívější grafy založené na datasetu `trees` budeme chtít ozvláštnit nějakým přednastaveným motivem. Už i v samotném balíčku `ggplot2` najdeme některé motivy, které se nastavují funkcemi, jejichž názvy začínají na `theme_`. Nejprve tedy opět upravíme vhodně náš dataset se stromy a pak budeme demonstrovat tyto funkce.
+
+```{r}
+#| label: rychla-uprava-datasetu
+# vezmeme opět dataset se stromy, který přichází s R rovnou, a není tedy potřeba nic dalšího instalovat
+trees <- 
+  trees |> 
+  as_tibble() |> 
+  janitor::clean_names() |> 
+  mutate(
+    girth = set_units(girth, "in") |> 
+      set_units("cm"),
+    height = set_units(height, "ft") |> 
+      set_units("m"),
+    volume = set_units(volume, "ft3") |> 
+      set_units("m3")
+  )
+
+# nakresleme nějaký základ
+# uložme si ho zámerně do objektu p1
+p1 <- 
+  ggplot(
+  trees,
+  aes(
+    x = girth,
+    y = height
+  )
+) + 
+  geom_point(
+    aes(size = volume),
+    col = "darkolivegreen"
+  ) + 
+  geom_smooth(
+    method = "lm",
+    se = F,
+    linetype = 4,
+    linewidth = 1,
+    col = "red"
+  ) + 
+  labs(
+    title = "Závilost výšky střemchy pozdní na obvodu kmene",
+    subtitle = "autor: O. Ledvinka",
+    caption = "zdroj dat: R balíček datasets",
+    x = "obvod kmene",
+    y = "výška",
+    size = "objem"
+  )
+```
+
+Nyní máme základ grafu přiřazený k objektu `p1`. Využijme tento objekt a operátorem `+` na něj aplikume různé `theme_` funkce (z různých balíčků).
+
+```{r}
+#| label: demonstrace-motivu
+# nejprve předveďme některé motivy pocházející přímo z balíčku ggplot2
+p1 + 
+  theme_bw() # nastaví černobílý motiv
+
+p1 + 
+  theme_void() # odebere nepodstatné prvky tak, aby základ grafu mohl být vložen např. lokalizovaně do mapy
+
+# nyní funkce z balíčku ggthemes
+p1 + 
+  theme_excel_new() # napodobí grafy s nových verzí MS Excel
+
+p1 + 
+  theme_calc() # napodobí grafy z Libre Office Calc
+
+# v neposlední řadě ukažme motivy z balíčku ThemePark
+p1 + 
+  theme_simpsons() # navozuje pocit, jako bychom se dívali na písmo ze seriálu Simpsonovi
+
+p1 + 
+  theme_friends() # navozuje pocit, jako bychom se dívali na písmo ze seriálu Přátelé
+
+# je ale vidět, že některé motivy mají problém s českou diakritikou, tak volme obezřetně
+```
+
+Existují další balíčky přinášející motivy pro grafy tvořené logikou ggplot2. AI např. odkazuje na balíček `hrbrthemes`. Abychom mohli využít tzv. Markdown při popisování grafů (např. s využitím matematické notace), je také doporučován balíček `ggtext`, který dodává další pomocné funkce, jejichž název začíná na `element_`. Tyto funkce se vkládají do funkcí `theme_` k doladění popisků atp.[^1]
+
+[^1]: Viněta k balíčku `ggtext` na <https://wilkelab.org/ggtext/articles/plotting_text.html>, prozrazuje mnohem více.
+
+## Facety (neboli panely, podgrafy)
+
+Velice efektivní při kreslení grafů ve smyslu ggplot2 jsou tzv. facety. V balíčku `ggplot2` se nacházejí dvě základní funkce, pomocí nichž lze graf rozdělit podle nějaké proměnné (nejčastěji kategorické). Těmito funkcemi jsou `facet_wrap()` a `facet_grid()`. Ukažne si tedy, jak např. pracovat s funkcí `facet_wrap()`. Nejprve ale budeme muset získat nějakou kategorickou proměnnou (s třídou *factor*, která se pod sloupci *tibble* objektu ukazuje jako `<fct>`).
+
+```{r}
+#| label: demonstrace-facet
+# řekněme, že kategorickou proměnnou chceme získat z objemu tak, že tuto numerickou veličinu převedeme na faktor
+# už jsme se nepatrně dotkli funkce cut(), která numerické proměnné konvertuje na intervaly podle nějakého pravidla
+# my si ale pomůžeme vestavěnými funkcemi balíčku ggplot2
+trees <- 
+  trees |> 
+  mutate(
+    volume2 = drop_units(volume) |> # musíme se zbavit jednotek, jinak to nebude fungovat
+      cut_number(n = 4) # tuto funkci z ggplot2 využijeme, když máme podezření na šikmé rozdělení proměnné a chceme intervaly s podobným počtem členů
+  )
+
+# nyní již můžeme ukázat sílu facet
+# odhlédněme nyní od objektu p1, kde je objem využit pro velikost bodu
+ggplot(
+  trees,
+  aes(
+    x = girth,
+    y = height
+  )
+) + 
+  geom_point(
+    col = "darkolivegreen",
+    size = 1
+  ) + 
+  geom_smooth(
+    method = "lm",
+    se = F,
+    col = "red",
+    linetype = 4,
+    linewidth = 1
+  ) + 
+  facet_wrap(~volume2, # funkce akceptuje tildu a název proměnné, podle které chceme graf dělit; můžeme si dokonce diktovat, kolik má být řádků a kolik sloupců
+             labeller = label_both # zde jsme použili pojmenovanou funkci label_both(), aby se ukázal název třetí proměnné
+             ) +
+  labs(
+    title = "Závislost výšky střemchy pozdní na obvodu kmene",
+    subtitle = "autor: O. Ledvinka",
+    caption = "zdroj dat: R balíček datasets",
+    x = "obvod kmene",
+    y = "výška"
+  )
+
+# zeptejte se AI, jak by bylo možné panely pojmenovat vlastními popisky
+```
+
+Vidíme, že se dokonce sestavily separátní lineární modely pro konstrukci regresní přímky.
+
+Dodejme, že funkce `facet_grid()` akceptuje dvě proměnné – pomyslně řádky a sloupce. Jde o velice efektivní členění grafu, díky kterému můžeme zkoumat vliv třetí a čtvrté proměnné, a tak vlastně i tzv. interakce.

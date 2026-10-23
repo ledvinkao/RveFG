@@ -5,7 +5,7 @@ format: html
 embed-resources: true
 toc: true
 editor: visual
-date: 2025-11-11
+date: 2025-10-27
 date-modified: '`r Sys.Date()`'
 bibliography: references_RveFG.bib
 csl: geografie-sbornik-cgs.csl
@@ -18,7 +18,7 @@ engine: knitr
 
 V následujícím se předpokládá, že již máme založený R projekt ze začátku kurzu. To znamená, že máme možnost využívat relativní cesty k souborům a jiné výhody práce s R projektem. Dále se předpokládá, že máme kvalitní připojení k internetu, jelikož se může stát, že budeme instalovat chybějící balíčky.
 
-Pokud možno, budeme také pracovat s nejnovějšími verzemi `R` (v současnosti `r R.Version()$version.string` – `r R.Version()$nickname` z `r paste(R.Version()$year, R.Version()$month, R.Version()$day, sep = "-")`) a RStudio (v současnosti RStudio 2025.09.2+418 "Cucumberleaf Sunflower" z 2025-10-20).
+Pokud možno, budeme také pracovat s nejnovějšími verzemi `R` (v současnosti `r R.Version()$version.string` – `r R.Version()$nickname` z `r paste(R.Version()$year, R.Version()$month, R.Version()$day, sep = "-")`) a RStudio (v současnosti RStudio 2026.10.0+233 "Blue Mistflower").
 
 ## Logické vektory
 
@@ -33,6 +33,8 @@ Pokračujme ve cvičení s tabulkou se stromy.
 # nejprve tabulku opět ukliďme
 xfun::pkg_attach2("tidyverse")
 
+# jde hlavně o převod jednotek do soustavy SI
+# nakonec jednotky hromadně zahodíme kvůli funkčnosti navazujících operací
 df <- trees |> 
   as_tibble() |> 
   janitor::clean_names() |> 
@@ -50,7 +52,7 @@ objem <- df$volume
 
 objem
 
-objem <- as.data.frame(df)[, 3] # protože tibble se chová jinak než data frame
+objem <- as.data.frame(df)[, 3] # protože tibble se s hranatými závorkami chová jinak než data frame
 
 objem
 
@@ -128,7 +130,7 @@ any(is.na(objem2))
 
 all(is.na(objem2))
 
-# tohle funguje, protože logické vektory mohou být snadno konvertovány a numerické vektory s hodnotou 0 pro nepravdu a hodnotou 1 pro pravdu
+# tohle funguje, protože logické vektory mohou být snadno konvertovány na numerické vektory s hodnotou 0 pro nepravdu a hodnotou 1 pro pravdu
 as.numeric(is.na(objem2))
 
 sum(is.na(objem2))
@@ -148,7 +150,7 @@ Nejprve si přidáme sloupec 'objem2' do naší tabulky se stromy. K tomu dobře
 df <- df |> 
   mutate(objem2 = objem2)
 
-# nyní můžeme aplikovat funkci filter() např. pro výběr řádků, kde je sloupec 'objem 2' s chybějící hodnotou, nebo naopak bez ní
+# nyní můžeme aplikovat funkci filter() např. pro výběr řádků, kde je sloupec 'objem2' s chybějící hodnotou, nebo naopak bez ní
 df |> 
   filter(is.na(objem2)) # uvozovky kolem názvů vybraných sloupců nejsou nutné
 
@@ -175,7 +177,7 @@ df2 |>
   filter(is.na(objem2))
 ```
 
-Přidejme do tabulky `df` nový sloupec s pořadím, ať máme kd sipozici i jiný typ sloupce. Ukažme pak, jak lze na základě typů sloupců, tyto sloupce vybírat. Samozřejmě se zde uplatňuje logický vektor.
+Přidejme do tabulky `df` nový sloupec s pořadím, ať máme k dispozici i jiný typ sloupce. Ukažme pak, jak lze na základě typů sloupců, tyto sloupce vybírat. Samozřejmě se zde uplatňuje logický vektor.
 
 ```{r}
 #| label: vyber-sloupcu-s-logickymi-vektory
@@ -225,7 +227,7 @@ Je zapotřebí umět odlišovat funkce `any()` a `all()` od funkcí `if_any()` a
 
 ```{r}
 #| label: ifany-uvnitr-filter
-# vyberme z naší tabulky všechny řádky, kde alespoň v jednom sloupci máme chyybějící hodnotu´
+# vyberme z naší tabulky všechny řádky, kde alespoň v jednom sloupci máme chybějící hodnotu´
 df |> 
   filter(if_any(everything(),
                 is.na))
@@ -264,7 +266,7 @@ posl3 <- seq(1L,
 identical(posl1, posl3)
 ```
 
-Nějaké matematické funkce jsme si již ukázali. Ukázali jsme si také, že existují funkce `group_by()` a `povot_longer()`. Vedle funkce `mutate()` tuto kombinaci využijeme i ve funkci `summarize()`, kterou používáme např. pro výpočet průměrů po skupinách. Ukážeme ale také, že existují různé strategie, jak se k výsledku dostat.
+Nějaké matematické funkce jsme si již ukázali. Ukázali jsme si také, že existují funkce `group_by()` a `pivot_longer()`. Vedle funkce `mutate()` tuto kombinaci využijeme i ve funkci `summarize()`, kterou používáme např. pro výpočet průměrů po skupinách. Ukážeme ale také, že existují různé strategie, jak se k výsledku dostat.
 
 ```{r}
 #| label: summarize
