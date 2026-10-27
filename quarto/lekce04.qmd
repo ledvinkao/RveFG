@@ -1,6 +1,8 @@
 ---
 title: "R ve fyzické geografii: Logické vektory, čísla"
-author: "Ondřej Ledvinka"
+author: 
+    name: Ondřej Ledvinka
+    email: "ledvinka@natur.cuni.cz"
 format: html
 embed-resources: true
 toc: true
